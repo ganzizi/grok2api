@@ -1225,8 +1225,8 @@ func TestShouldHoldQualityStreamGates(t *testing.T) {
 	if shouldHoldQualityStream(input, nil, route, audit.OperationImage, cfg) {
 		t.Fatal("image must not hold")
 	}
-	if shouldHoldQualityStream(input, nil, route, audit.OperationCompaction, cfg) {
-		t.Fatal("compaction must not enter missing-thinking hold")
+	if !shouldHoldQualityStream(input, nil, route, audit.OperationCompaction, cfg) {
+		t.Fatal("compaction with no reasoning must hold")
 	}
 	classified := input
 	classified.skipQualityHold = true
@@ -1235,8 +1235,8 @@ func TestShouldHoldQualityStreamGates(t *testing.T) {
 	}
 	tui := input
 	tui.Body = []byte(`{"input":[{"role":"user","content":"` + tuiCompactionPrompt + `"}]}`)
-	if shouldHoldQualityStream(tui, nil, route, audit.OperationResponses, cfg) {
-		t.Fatal("tui compaction prompt must not enter missing-thinking hold")
+	if !shouldHoldQualityStream(tui, nil, route, audit.OperationResponses, cfg) {
+		t.Fatal("tui compaction prompt with no reasoning must hold")
 	}
 	for _, test := range []struct {
 		name string

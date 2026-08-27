@@ -371,24 +371,18 @@ func shouldHoldQualityStream(input Input, ownership *inferencedomain.ResponseOwn
 		return false
 	}
 	switch operation {
-	case audit.OperationChat, audit.OperationResponses, audit.OperationMessages, "":
+	case audit.OperationChat, audit.OperationResponses, audit.OperationMessages, audit.OperationCompaction, "":
 	default:
-		return false
-	}
-	// Context compaction is a system summary operation, not a normal reasoning
-	// turn. Holding it can quarantine a healthy account for producing the
-	// expected summary without streamed reasoning. Keep both compaction forms
-	// excluded even if a caller reaches this gate without skipQualityHold.
-	if isResponsesCompactionRequest(input.Body) {
 		return false
 	}
 	if route.Provider != accountdomain.ProviderBuild && route.Provider != accountdomain.ProviderConsole {
 		return false
 	}
-	// TUI commonly declares tools and follow-ups carry previous_response_id.
-	// They still need quality classification, but replay safety is decided
-	// separately: detecting a degraded response must not imply that an
-	// account-bound or side-effecting request can run on another account.
+	// TUI always declares tools (including hosted web_search / image jobs) and
+	// follow-ups carry previous_response_id. Skipping either let 0-thinking
+	// dumps through on the common agent loop. Keep holding; the attempt loop
+	// unpins after the first missing-thinking hit. Skip only when the request
+	// explicitly disables reasoning.
 	if qualityRequestDisablesReasoning(input.Body) {
 		return false
 	}
