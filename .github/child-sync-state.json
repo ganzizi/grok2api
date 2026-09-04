@@ -1,0 +1,90 @@
+{
+  "version": 1,
+  "upstream": {
+    "repository": "https://github.com/chenyme/grok2api.git",
+    "ref": "main"
+  },
+  "child": {
+    "repository": "https://github.com/lij768423-svg/grok2api.git",
+    "ref": "main"
+  },
+  "integrated": [
+    {
+      "commit": "730c8fef10835769033d3d4e8f9da94a53e849e0",
+      "mode": "adapted",
+      "note": "qualityGuard 默认值已按本 fork 方案合并"
+    },
+    {
+      "commit": "4e4371bfc4c16a574b5edc66d08afa135e4db2e7",
+      "mode": "adapted",
+      "note": "sidecar、Docker Compose 和 GHCR 发布已按本 fork 方案合并"
+    },
+    {
+      "commit": "8955728481405c3348a5c0419bca6b3c8c84cde2",
+      "mode": "adapted",
+      "note": "workflow_dispatch 发布已合并"
+    },
+    {
+      "commit": "3bdb53c2f6bb085a5958dce667e3314ff9ea11ae",
+      "mode": "adapted",
+      "note": "requestRetry 默认启用已合并"
+    },
+    {
+      "commit": "941336215a190e7faf608637855932b4e538c37b",
+      "mode": "partial",
+      "files": [
+        "scripts/from_residential.py",
+        "scripts/from_residential_test.py"
+      ],
+      "note": "只移植家宽生成器；不移植指向子分支的安装提示词和品牌文档"
+    },
+    {
+      "commit": "389ff74ac5b227e74168100f837d148cecb208d0",
+      "mode": "equivalent",
+      "note": "TUI follow-up、hosted tool 和 compaction hold 已由本 fork 等价实现"
+    },
+    {
+      "commit": "296ad23c4b2d076cb09c2f715241530527537502",
+      "mode": "equivalent",
+      "note": "hold 到期后的短输出拦截已由本 fork 等价实现"
+    },
+    {
+      "commit": "26557bae13ce8899141152d8f61c5c4e6d5ad990",
+      "mode": "equivalent",
+      "note": "floor 命中后的快速短输出拦截已由本 fork 等价实现"
+    },
+    {
+      "commit": "099b8cd3e979e48bbc0123f5048bbc3b1a73f196",
+      "mode": "adapted",
+      "note": "fake encrypted dump、cipher drool 和 idle cooldown 已合并"
+    },
+    {
+      "commit": "665a73a0a0bdfd5b1d405b50e07de97a7ee1b39d",
+      "mode": "adapted",
+      "note": "Codex MCP Schema 简化已保留官方归一化逻辑后合并"
+    }
+  ],
+  "excluded": [
+    {
+      "commit": "1a2e4288dff960a487aab3e3835209dbd0fa2fba",
+      "reason": "仅切换 lab 版本标签、Compose 镜像标签和发布元数据"
+    },
+    {
+      "commit": "8d1a59508570ed513b7396aefa251b7873343c45",
+      "reason": "仅为子分支当时的上游 PR 和拦截说明更新文档"
+    },
+    {
+      "commit": "d44b393e326fe42a391257498e80c69ac381fae9",
+      "reason": "仅更新子分支 lab 版本标签"
+    },
+    {
+      "commit": "b1a450e3982f20b76b390c5495d8cf9aca9cf79d",
+      "reason": "仅更新子分支 lab 版本标签和安装文档"
+    },
+    {
+      "commit": "85b569e08c14d6e56a55a9a07273ae26004b0a13",
+      "reason": "仅补充 fake-enc 和 Codex MCP 的说明文档"
+    }
+  ],
+  "pending": []
+}
