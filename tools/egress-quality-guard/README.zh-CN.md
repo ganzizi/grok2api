@@ -95,16 +95,16 @@ Webhook，确认出口发生变化，再执行一次真实模型质量检测；�
 qualityGuard:
   enabled: true
   model: "grok-4.6"
-  mode: hybrid
+  mode: passive
   activeInterval: 30m
   passivePollInterval: 5s
   softTPS: 500
-  hardTPS: 1000
+  hardTPS: 2500
   consecutiveSoft: 2
   consecutiveErrors: 2
   quarantineDuration: 5m
   noAccountBackoff: 5m
-  minimumHealthyNodes: 3
+  minimumHealthyNodes: 1
   failClosed: false
   nodeIDs: []
 ```
@@ -113,30 +113,30 @@ qualityGuard:
 
 `nodeIDs` 留空时会分页读取全部 Grok Build 节点；固定回退节点会被标记为受保护并排除，不会因为节点数超过单页上限而静默漏管。换 IP 等高级字段见 `config.example.yaml`。
 
-默认混合策略为：
+Fork 默认 passive 策略为：
 
 - 每 5 秒检查一次真实请求审计；
-- 每 1,800 秒主动测试五个节点，附加最多 30 秒抖动；
-- 可见速度达到 1000 Token/s 立即隔离；
+- 不执行定时主动模型探测，因此不会额外消耗模型 Token；
+- 可见速度达到 2500 Token/s 立即隔离；
 - 达到 500 Token/s 连续两次才隔离；
 - 连续两次探测错误才隔离；
 - 隔离 300 秒后复测；
-- 始终至少保留 3 个可用出口。
+- 默认至少保留 1 个可用出口，可按实际号池规模调高。
 
-五个节点每 30 分钟测试一次，每天产生 240 次模型请求。被动模式只增加少量数据库读取，不消耗额外模型 Token 或住宅推理流量。
+切换为 `active` 或 `hybrid` 后，主动模型探测才会按配置周期产生请求；单独使用 passive 只增加少量数据库读取，不消耗额外模型 Token 或住宅推理流量。
 
 ## Docker Compose 快速接入
 
-sidecar 默认不启动，需要通过 `quality-guard` Compose profile 按需启用。
+sidecar 默认随 Compose 服务集启动，并按兼容子分支的 passive 配置运行。
 
 从仓库根目录执行：
 
 ```sh
-docker compose --profile quality-guard up -d --build
+docker compose up -d --build
 ```
 
 以后修改 `config.yaml` 中的 `qualityGuard` 基础配置时，执行
-`docker compose --profile quality-guard restart grok2api egress-quality-guard` 让主程序重新生成 bootstrap。管理页面保存的运行策略仍会热加载，无需重启。
+`docker compose restart grok2api egress-quality-guard` 让主程序重新生成 bootstrap。管理页面保存的运行策略仍会热加载，无需重启。
 
 sidecar 通过 `GROK2API_BASE_URL` 访问主程序，Compose 网络默认是 `http://grok2api:8000`。主服务改名或使用 host 网络时需要覆盖，例如 `GROK2API_BASE_URL=http://127.0.0.1:8000`。
 

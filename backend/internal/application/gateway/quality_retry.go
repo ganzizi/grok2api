@@ -426,7 +426,10 @@ func shouldHoldQualityStream(input Input, ownership *inferencedomain.ResponseOwn
 	default:
 		return false
 	}
-	if route.Provider != accountdomain.ProviderBuild && route.Provider != accountdomain.ProviderConsole {
+	// The sidecar manages Build egress only. Keep Console streaming on its
+	// native path so the Build-specific quality policy cannot reject valid
+	// Console reasoning responses.
+	if route.Provider != accountdomain.ProviderBuild {
 		return false
 	}
 	// TUI always declares tools (including hosted web_search / image jobs) and

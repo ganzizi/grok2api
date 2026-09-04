@@ -12,12 +12,12 @@
     {
       "commit": "730c8fef10835769033d3d4e8f9da94a53e849e0",
       "mode": "adapted",
-      "note": "qualityGuard remains available with explicit lab settings, while stable defaults stay opt-in for Web and Console compatibility"
+      "note": "qualityGuard preserves the child-compatible enabled/passive lab defaults; the gateway limits requestRetry to Build for Web and Console compatibility"
     },
     {
       "commit": "4e4371bfc4c16a574b5edc66d08afa135e4db2e7",
       "mode": "adapted",
-      "note": "the sidecar, Docker Compose integration, and GHCR publishing were adapted to this fork; sidecar startup is behind the quality-guard profile"
+      "note": "the sidecar, Docker Compose integration, and GHCR publishing were adapted to this fork; sidecar startup preserves the child-compatible default service flow"
     },
     {
       "commit": "8955728481405c3348a5c0419bca6b3c8c84cde2",
@@ -27,7 +27,7 @@
     {
       "commit": "3bdb53c2f6bb085a5958dce667e3314ff9ea11ae",
       "mode": "adapted",
-      "note": "requestRetry remains available with explicit lab settings but stays opt-in so normal Console streaming is not rejected by default"
+      "note": "requestRetry stays enabled for Build by default; Console streaming is excluded from the Build quality policy"
     },
     {
       "commit": "941336215a190e7faf608637855932b4e538c37b",

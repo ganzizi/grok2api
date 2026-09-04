@@ -1246,6 +1246,19 @@ func TestShouldHoldQualityStreamGates(t *testing.T) {
 	if !shouldHoldQualityStream(input, nil, route, audit.OperationChat, cfg) {
 		t.Fatal("expected hold on thinking build chat")
 	}
+	consoleRoute := route
+	consoleRoute.Provider = accountdomain.ProviderConsole
+	consoleRoute.UpstreamModel = "grok-4.20-multi-agent-0309"
+	consoleInput := input
+	consoleInput.PublicModel = consoleRoute.UpstreamModel
+	if shouldHoldQualityStream(consoleInput, nil, consoleRoute, audit.OperationChat, cfg) {
+		t.Fatal("quality retry must not intercept normal Console reasoning streams")
+	}
+	webRoute := route
+	webRoute.Provider = accountdomain.ProviderWeb
+	if shouldHoldQualityStream(input, nil, webRoute, audit.OperationChat, cfg) {
+		t.Fatal("quality retry must not intercept Web streams")
+	}
 	off := cfg
 	off.Enabled = false
 	if shouldHoldQualityStream(input, nil, route, audit.OperationChat, off) {

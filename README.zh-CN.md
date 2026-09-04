@@ -24,7 +24,7 @@
 > 推荐个人新项目 [DEEIX-AI / DEEIX-Chat](https://github.com/DEEIX-AI/DEEIX-Chat)：面向多模型路由、对话、文件、工具、计费与运维的一体化轻量 AI 平台。
 
 > [!NOTE]
-> **本 fork（ganzizi/grok2api）已集成出口质量守护。** `qualityGuard` 与 `requestRetry` 默认关闭，避免普通 Web/Console 流式请求被质量拦截；需要时再显式开启。默认从本仓库构建镜像，也可通过 `GROK2API_IMAGE` 或 `GROK2API_QG_IMAGE` 指定镜像。
+> **本 fork（ganzizi/grok2api）已集成出口质量守护。** 兼容子分支的 `qualityGuard` 与 Build `requestRetry` 默认以 passive 模式启用；Web 和 Console 流式请求保持原生路径，不进入 Build 专用质量拦截。默认从本仓库构建镜像，也可通过 `GROK2API_IMAGE` 或 `GROK2API_QG_IMAGE` 指定镜像。
 
 > [!NOTE]
 > 本项目仅供技术研究与学习交流。使用时请务必遵循 Grok 官方的使用条款及当地法律法规，否则一切后果自负！
@@ -360,13 +360,13 @@ curl http://127.0.0.1:8000/v1/responses \
 - 按作用域配置无回退、直连或固定节点
 - 代理池模式，单次连接失败不会触发全局冷却
 - 固定代理传输失败后立即复测；同节点复测自动合并，后续绑定请求限时等待并在恢复后快速重试
-- [出口质量守护程序](./tools/egress-quality-guard/README.zh-CN.md)：逐节点模型探测、防误杀隔离和自动恢复；需要时通过 `quality-guard` Compose profile 按需启用
+- [出口质量守护程序](./tools/egress-quality-guard/README.zh-CN.md)：逐节点模型探测、防误杀隔离和自动恢复；随普通 `docker compose up -d` 流程启动
 - 代理用户名包含 `{account}` 的节点会被识别为租约级节点：被动审计异常只会临时移出对应的账号租约，冷却后固定使用同一账号和节点复测，复测异常会续期；若 sidecar 不可用，已到期的隔离不会继续阻断路由，避免孤儿状态永久卡住账号。共享节点始终不会因此停用，也不会暴露渲染后的代理身份。普通固定 sticky 会话仍可按独立节点管理
 - 固定 sticky 会话应各自建成独立节点（`proxyPool=false`）。不要把多条 sticky 合成一个节点，否则质量守护只能整组摘流，无法定位坏会话
 
 Hysteria 与 TUIC 暂未支持。FlareSolverr 仅接受 HTTP/SOCKS 代理地址，因此自动刷新 Clearance 暂不能直接使用隧道分享链接。
 
-`config.example.yaml` 已包含 qualityGuard 配置但默认关闭。开启后，主程序会自动创建并稳定复用不可导出的系统探测身份：
+`config.example.yaml` 已包含默认启用的 Build qualityGuard 配置，主程序会自动创建并稳定复用不可导出的系统探测身份：
 
 ```yaml
 qualityGuard:
@@ -385,15 +385,15 @@ qualityGuard:
     idleAccountCooldown: 15m
 ```
 
-`requestRetry` 在网关请求路径上生效，与 sidecar 探测/隔离相互独立，默认关闭。开启后，可见输出达到 `minOutputTokens` 且全程无流式 reasoning 时**不发给用户**；只有可安全重放的无状态请求才会排除账号重试。TUI 续聊（`previous_response_id`）和 hosted tools 仍会进入 hold 检测，但质量拦截不会把账号绑定状态或有副作用的工具跨账号重放，最终按 `onExhausted` 返回 `503 quality_degraded` 或放出当前响应。上下文压缩、图片、视频和 ForcedEgress 探针不受影响。
+`requestRetry` 在网关请求路径上生效，与 sidecar 探测/隔离相互独立，默认只对 Build 启用。Web 和 Console 不进入这条 Build 专用质量策略，因此正常流式请求不受影响。Build 思考模型在可见输出达到 `minOutputTokens` 且全程无流式 reasoning 时**不发给用户**；只有可安全重放的无状态请求才会排除账号重试。TUI 续聊（`previous_response_id`）和 hosted tools 仍会进入 hold 检测，但质量拦截不会把账号绑定状态或有副作用的工具跨账号重放，最终按 `onExhausted` 返回 `503 quality_degraded` 或放出当前响应。上下文压缩、图片、视频和 ForcedEgress 探针不受影响。
 
 ```bash
-docker compose --profile quality-guard up -d --build
+docker compose up -d --build
 ```
 
 曾使用预览版 `clientKeyID` 配置的现有部署可以直接升级：该字段会被兼容读取但不再使用，可安全删除；原来手工创建的探测 Key 不会被程序擅自删除。
 
-后续修改该配置时，执行 `docker compose --profile quality-guard restart grok2api egress-quality-guard` 使基础配置重新加载；管理页面中的策略调整仍支持热加载。
+后续修改该配置时，执行 `docker compose restart grok2api egress-quality-guard` 使基础配置重新加载；管理页面中的策略调整仍支持热加载。
 
 sidecar 只从主程序获得权限受限的内部凭据，不保存或使用管理员密码。启用自动隔离前请先阅读上面的详细说明。
 

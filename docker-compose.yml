@@ -61,10 +61,9 @@ services:
       LOG_LEVEL: info
     restart: unless-stopped
 
-  # Egress quality guard: optional; it starts only with the quality-guard profile.
+  # Egress quality guard: starts with the main service in passive mode.
   egress-quality-guard:
     container_name: grok2api-egress-quality-guard
-    profiles: ["quality-guard"]
     image: "${GROK2API_QG_IMAGE:-ghcr.io/ganzizi/grok2api-quality-guard:latest}"
     build:
       context: .
@@ -80,7 +79,7 @@ services:
         condition: service_healthy
     volumes:
       - quality_guard_state:/var/lib/grok2api-quality-guard
-    restart: "on-failure:5"
+    restart: unless-stopped
     init: true
     stop_grace_period: 30s
     security_opt:

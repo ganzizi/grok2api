@@ -70,7 +70,8 @@ credential, account-block, and quota signals retain their normal transitions.
   adds no model requests. Soft and hard anomalies quarantine immediately;
   recovery probes run only after the hold for nodes quarantined by the guard.
 - `active`: run only fixed per-node probes at the configured interval.
-- `hybrid`: enable both detectors. This is the recommended default.
+- `hybrid`: enable both detectors. The fork default is `passive`; choose
+  `hybrid` when scheduled active probes are also wanted.
 
 Passive monitoring ignores non-streaming requests, failed requests, responses
 with fewer than 32 output tokens, and audits created by the guard's own client
@@ -148,16 +149,16 @@ copy, select, or configure a Client Key for the guard:
 qualityGuard:
   enabled: true
   model: "grok-4.6"
-  mode: hybrid
+  mode: passive
   activeInterval: 30m
   passivePollInterval: 5s
   softTPS: 500
-  hardTPS: 1000
+  hardTPS: 2500
   consecutiveSoft: 2
   consecutiveErrors: 2
   quarantineDuration: 5m
   noAccountBackoff: 5m
-  minimumHealthyNodes: 3
+  minimumHealthyNodes: 1
   failClosed: false
   nodeIDs: []
 ```
@@ -187,16 +188,17 @@ traffic. Choose a longer active interval when upstream quota is limited.
 
 ## Docker Compose quick start
 
-The sidecar is optional and starts with the `quality-guard` Compose profile.
+The sidecar starts with the normal Compose service set and runs in passive mode
+by default for the child-compatible fork configuration.
 
 Run from the repository root:
 
 ```sh
-docker compose --profile quality-guard up -d --build
+docker compose up -d --build
 ```
 
 After changing the base `qualityGuard` settings in `config.yaml`, run
-`docker compose --profile quality-guard restart grok2api egress-quality-guard`
+`docker compose restart grok2api egress-quality-guard`
 so the main service regenerates the bootstrap. Policy changes saved in the
 admin page still hot-reload without a restart.
 
