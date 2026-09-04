@@ -101,6 +101,7 @@ func (flaresolverrSolver) Solve(ctx context.Context, cfg ClearanceConfig, proxyU
 		Message  string `json:"message"`
 		Solution struct {
 			UserAgent string `json:"userAgent"`
+			Response  string `json:"response"`
 			Cookies   []struct {
 				Name  string `json:"name"`
 				Value string `json:"value"`
@@ -117,6 +118,9 @@ func (flaresolverrSolver) Solve(ctx context.Context, cfg ClearanceConfig, proxyU
 		}
 		return clearanceSolution{}, fmt.Errorf("FlareSolverr 求解失败: %s", message)
 	}
+	if isFlareSolverrBlockPage(result.Solution.Response) {
+		return clearanceSolution{}, errors.New("FlareSolverr 返回 Cloudflare 阻断页面")
+	}
 	parts := make([]string, 0, len(result.Solution.Cookies))
 	for _, cookie := range result.Solution.Cookies {
 		if strings.TrimSpace(cookie.Name) != "" && strings.TrimSpace(cookie.Value) != "" {
@@ -129,6 +133,10 @@ func (flaresolverrSolver) Solve(ctx context.Context, cfg ClearanceConfig, proxyU
 		return clearanceSolution{}, errors.New("FlareSolverr 返回的 User-Agent 无效")
 	}
 	return clearanceSolution{Cookies: cookies, UserAgent: userAgent}, nil
+}
+
+func isFlareSolverrBlockPage(response string) bool {
+	return strings.Contains(strings.ToLower(response), "blocked due to abusive traffic patterns")
 }
 
 func sanitizeFlareSolverrMessage(value string) string {
