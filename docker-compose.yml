@@ -1,6 +1,5 @@
 name: grok2api
 
-# Lab defaults match 18183: qualityGuard + requestRetry are enabled, and the sidecar starts with `up -d`.
 # Build from this repository by default; set GROK2API_IMAGE or GROK2API_QG_IMAGE to use published images.
 # First run: cp config.example.yaml config.yaml, then update secrets and bootstrapAdmin.
 
@@ -62,9 +61,10 @@ services:
   #     LOG_LEVEL: info
   #   restart: unless-stopped
 
-  # Egress quality guard: starts with the main service in passive mode (no extra model tokens).
+  # Egress quality guard: optional; it starts only with the quality-guard profile.
   egress-quality-guard:
     container_name: grok2api-egress-quality-guard
+    profiles: ["quality-guard"]
     image: "${GROK2API_QG_IMAGE:-ghcr.io/ganzizi/grok2api-quality-guard:latest}"
     build:
       context: .
@@ -80,7 +80,7 @@ services:
         condition: service_healthy
     volumes:
       - quality_guard_state:/var/lib/grok2api-quality-guard
-    restart: unless-stopped
+    restart: "on-failure:5"
     init: true
     stop_grace_period: 30s
     security_opt:

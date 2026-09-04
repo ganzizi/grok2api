@@ -24,7 +24,7 @@
 > Check out [DEEIX-AI / DEEIX-Chat](https://github.com/DEEIX-AI/DEEIX-Chat), a lightweight, integrated AI platform for model routing, chat, files, tools, billing, identity, and operations.
 
 > [!NOTE]
-> **This fork (ganzizi/grok2api) includes the egress quality guard integration.** `qualityGuard` and `requestRetry` are enabled by default (30s hold, 12h missing-thinking cooldown, 15m idle cooldown), and `docker compose up -d` starts the quality-guard sidecar in passive mode. Images are built from this repository by default; set `GROK2API_IMAGE` or `GROK2API_QG_IMAGE` to use a registry image.
+> **This fork (ganzizi/grok2api) includes the egress quality guard integration.** `qualityGuard` and `requestRetry` are opt-in so normal Web/Console streaming is not intercepted by default. Images are built from this repository by default; set `GROK2API_IMAGE` or `GROK2API_QG_IMAGE` to use a registry image.
 
 > [!NOTE]
 > This project is for technical research and learning purposes only. Please comply with Grok's official terms of use and local laws when using it; otherwise, you will be solely responsible for all consequences!
@@ -202,7 +202,7 @@ bootstrapAdmin:
   password: "replace-with-a-strong-password"
 ```
 
-Start the service (gateway + quality-guard sidecar):
+Start the gateway:
 
 ```bash
 docker compose up -d --build
@@ -390,13 +390,13 @@ Egress nodes are scoped to Build, Web, Console, or Web assets. The admin console
 - Fallback per scope: none, direct, or a fixed node
 - Proxy-pool mode without global cooldown after one connection failure
 - Immediate recovery probes after fixed-proxy transport failures, with per-node coalescing and bounded waiting for fast retry
-- [Egress Quality Guard](./tools/egress-quality-guard/README.md) for per-node probes, quarantine, and recovery; `docker compose up -d` starts the sidecar in passive mode
+- [Egress Quality Guard](./tools/egress-quality-guard/README.md) for per-node probes, quarantine, and recovery; enable it with the `quality-guard` Compose profile when needed
 - Nodes whose proxy username contains `{account}` are treated as lease-scoped: a passive anomaly temporarily removes only the audited account lease, then recovery pins the probe to that same account and node. An unhealthy probe renews the hold; an expired hold no longer blocks routing if the sidecar is unavailable, so stale guard state cannot strand an account indefinitely. The shared node is never disabled and the rendered proxy identity is never exposed. Ordinary fixed sticky sessions can still be managed as separate nodes
 - Give each sticky session its own fixed node (`proxyPool=false`). Do not merge several stickies into one node, or the guard can only quarantine the whole group
 
 Hysteria and TUIC are not supported yet. FlareSolverr accepts only HTTP/SOCKS proxy URLs, so automatic clearance refresh cannot use a tunnel share URL directly.
 
-`config.example.yaml` already enables qualityGuard. The main service creates and reuses a non-exportable system probe identity automatically:
+`config.example.yaml` includes the qualityGuard settings with the feature disabled by default. The main service creates and reuses a non-exportable system probe identity automatically when the feature is enabled:
 
 ```yaml
 qualityGuard:
@@ -416,17 +416,17 @@ qualityGuard:
     idleAccountCooldown: 15m
 ```
 
-`requestRetry` runs on the gateway request path and is independent of the sidecar. This fork enables it by default. When enabled, a thinking-model stream with enough visible output and no streamed reasoning is **not delivered**; replay-safe stateless requests may try another account. TUI follow-ups (`previous_response_id`) and hosted-tool turns are still held for classification, but a quality withhold never replays account-bound state or side-effecting tools across accounts; `onExhausted` returns `503 quality_degraded` or releases that held body. Context compaction, image, video, and ForcedEgress probe requests are unchanged.
+`requestRetry` runs on the gateway request path and is independent of the sidecar. It is disabled in the stock configuration. When enabled, a thinking-model stream with enough visible output and no streamed reasoning is **not delivered**; replay-safe stateless requests may try another account. TUI follow-ups (`previous_response_id`) and hosted-tool turns are still held for classification, but a quality withhold never replays account-bound state or side-effecting tools across accounts; `onExhausted` returns `503 quality_degraded` or releases that held body. Context compaction, image, video, and ForcedEgress probe requests are unchanged.
 
 ```bash
-docker compose up -d
+docker compose --profile quality-guard up -d --build
 ```
 
 Existing preview deployments that still contain `clientKeyID` can upgrade
 directly. The field is accepted for compatibility but ignored and can be
 removed; any manually created probe key is intentionally left untouched.
 
-After changing this configuration, run `docker compose restart grok2api egress-quality-guard` to reload the base settings; policy edits made in the admin page still hot-reload.
+After changing this configuration, run `docker compose --profile quality-guard restart grok2api egress-quality-guard` to reload the base settings; policy edits made in the admin page still hot-reload.
 
 The sidecar receives a narrowly scoped internal credential from the main service and never stores or uses the administrator password. See the linked guide before enabling automatic quarantine.
 
