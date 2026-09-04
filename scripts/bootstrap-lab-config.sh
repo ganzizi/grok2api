@@ -1,13 +1,13 @@
 #!/bin/sh
-# Copy config.example.yaml → config.yaml and fill jwt/encryption/admin secrets.
+# 复制 config.example.yaml 为 config.yaml，并生成 JWT、加密和管理员密钥。
 set -eu
 cd "$(dirname "$0")/.."
 if [ -f config.yaml ]; then
-  echo "config.yaml already exists; not overwriting."
+  echo "config.yaml 已存在，不覆盖。"
   exit 0
 fi
 if [ ! -f config.example.yaml ]; then
-  echo "missing config.example.yaml" >&2
+  echo "缺少 config.example.yaml" >&2
   exit 1
 fi
 jwt=$(openssl rand -hex 32)
@@ -20,6 +20,6 @@ awk -v jwt="$jwt" -v key="$key" -v pass="$pass" '
   { print }
 ' config.example.yaml > config.yaml
 chmod 600 config.yaml
-echo "wrote config.yaml (admin password printed once): $pass"
-echo "login: http://127.0.0.1:8000  user=admin"
-echo "then: docker compose up -d"
+echo "已写入 config.yaml（管理员密码仅显示一次）：$pass"
+echo "登录地址：http://127.0.0.1:8000，用户：admin"
+echo "下一步：docker compose up -d"
