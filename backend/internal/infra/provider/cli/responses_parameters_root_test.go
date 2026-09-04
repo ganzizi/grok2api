@@ -265,16 +265,16 @@ func TestNormalizeBuildFunctionParametersRootRejectsIllegalRootWithToolName(t *t
 	}
 }
 
-func TestNormalizeResponsesRequestIllegalFunctionRootNamesTool(t *testing.T) {
-	_, _, err := normalizeResponsesRequest([]byte(`{
+func TestNormalizeResponsesRequestSimplifiesIllegalFunctionRootNamesTool(t *testing.T) {
+	normalized, compatibility, err := normalizeResponsesRequest([]byte(`{
 		"model":"public",
 		"input":"hello",
 		"tools":[{"type":"function","name":"mcp__codex_app__automation_update","parameters":{"type":"string"}}]
 	}`), "grok-4.5")
-	requestErr, ok := err.(*responsesRequestError)
-	if !ok || requestErr.Param != "tools[0].parameters" || !strings.Contains(requestErr.Message, "mcp__codex_app__automation_update") {
-		t.Fatalf("error=%#v", err)
+	if err != nil {
+		t.Fatal(err)
 	}
+	assertSimplifiedBuildFunctionParameters(t, normalized, compatibility, "mcp__codex_app__automation_update")
 }
 
 func TestNormalizeBuildFunctionParametersRootRejectsRootCycle(t *testing.T) {
