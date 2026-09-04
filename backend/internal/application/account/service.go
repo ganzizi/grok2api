@@ -3858,47 +3858,58 @@ func (s *Service) SyncAllConsoleQuotasWithProgress(ctx context.Context, progress
 // authoritative Console quota kinds. It is safe to run periodically and uses
 // the shared sync pool to preserve the deployment-wide upstream limit.
 func (s *Service) SyncIncompleteConsoleQuotas(ctx context.Context) (int, int, error) {
-	const batchSize = 1000
 	var succeeded, failed int
 	var afterID uint64
 	for {
-		values, _, err := s.accounts.ListProviderAccountBatch(ctx, accountdomain.ProviderConsole, afterID, batchSize)
-		if err != nil {
-			return succeeded, failed, err
-		}
-		if len(values) == 0 {
-			return succeeded, failed, nil
-		}
-		ids := make([]uint64, 0, len(values))
-		for _, value := range values {
-			if value.Enabled && value.AuthStatus == accountdomain.AuthStatusActive {
-				ids = append(ids, value.ID)
-			}
-		}
-		windows, err := s.accounts.GetQuotaWindows(ctx, ids)
-		if err != nil {
-			return succeeded, failed, err
-		}
-		pending := make([]uint64, 0, len(ids))
-		for _, id := range ids {
-			if !completeConsoleUsageSnapshot(windows[id]) {
-				pending = append(pending, id)
-			}
-		}
-		var batchSucceeded, batchFailed int
-		if len(pending) > 0 {
-			batchSucceeded, batchFailed, err = s.syncConsoleQuotaAccounts(ctx, "console_usage_migration", pending)
-		}
+		batchSucceeded, batchFailed, nextAfterID, hasMore, err := s.SyncIncompleteConsoleQuotasBatch(ctx, afterID, accountTaskBatchSize)
 		succeeded += batchSucceeded
 		failed += batchFailed
 		if err != nil {
 			return succeeded, failed, err
 		}
-		afterID = values[len(values)-1].ID
-		if len(values) < batchSize {
+		if !hasMore {
 			return succeeded, failed, nil
 		}
+		afterID = nextAfterID
 	}
+}
+
+// SyncIncompleteConsoleQuotasBatch refreshes at most limit incomplete Console
+// snapshots and returns a cursor for the next account batch. Startup callers
+// use the cursor to avoid turning a large account pool into one upstream burst.
+func (s *Service) SyncIncompleteConsoleQuotasBatch(ctx context.Context, afterID uint64, limit int) (int, int, uint64, bool, error) {
+	if limit <= 0 || limit > accountTaskBatchSize {
+		limit = accountTaskBatchSize
+	}
+	values, _, err := s.accounts.ListProviderAccountBatch(ctx, accountdomain.ProviderConsole, afterID, limit)
+	if err != nil {
+		return 0, 0, afterID, false, err
+	}
+	if len(values) == 0 {
+		return 0, 0, 0, false, nil
+	}
+	nextAfterID := values[len(values)-1].ID
+	ids := make([]uint64, 0, len(values))
+	for _, value := range values {
+		if value.Enabled && value.AuthStatus == accountdomain.AuthStatusActive {
+			ids = append(ids, value.ID)
+		}
+	}
+	windows, err := s.accounts.GetQuotaWindows(ctx, ids)
+	if err != nil {
+		return 0, 0, nextAfterID, len(values) == limit, err
+	}
+	pending := make([]uint64, 0, len(ids))
+	for _, id := range ids {
+		if !completeConsoleUsageSnapshot(windows[id]) {
+			pending = append(pending, id)
+		}
+	}
+	succeeded, failed := 0, 0
+	if len(pending) > 0 {
+		succeeded, failed, err = s.syncConsoleQuotaAccounts(ctx, "console_usage_migration", pending)
+	}
+	return succeeded, failed, nextAfterID, len(values) == limit, err
 }
 
 // SyncStaleConsoleQuotas refreshes a bounded batch of complete but old /usage
@@ -3977,9 +3988,6 @@ func (s *Service) syncConsoleQuotaAccounts(ctx context.Context, operation string
 			// Another replica already owns the refresh. Treat that as accepted work:
 			// queuing the same account locally only creates a trailing duplicate probe.
 			return nil
-		}
-		if refreshErr != nil && workCtx.Err() == nil {
-			s.QueueQuotaRefresh(id, "console")
 		}
 		return refreshErr
 	})
