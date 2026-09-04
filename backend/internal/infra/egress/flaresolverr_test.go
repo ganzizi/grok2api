@@ -60,6 +60,21 @@ func TestFlareSolverrSolveAcceptsNoChallengeWithoutCloudflareCookies(t *testing.
 	}
 }
 
+func TestFlareSolverrSolveRejectsAbusiveTrafficBlockPage(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, _ *http.Request) {
+		response.Header().Set("Content-Type", "application/json")
+		_, _ = response.Write([]byte(`{"status":"ok","solution":{"userAgent":"Mozilla/5.0 Chrome/146.0.0.0 Safari/537.36","response":"<p>Blocked due to abusive traffic patterns</p>","cookies":[{"name":"cf_clearance","value":"invalid"}]}}`))
+	}))
+	defer server.Close()
+
+	_, err := (flaresolverrSolver{}).Solve(context.Background(), ClearanceConfig{
+		FlareSolverrURL: server.URL, TargetURL: "https://console.x.ai", Timeout: time.Second,
+	}, "")
+	if err == nil || !strings.Contains(err.Error(), "阻断页面") {
+		t.Fatalf("block page error = %v", err)
+	}
+}
+
 func TestFlareSolverrSolveRejectsTunnelProxy(t *testing.T) {
 	_, err := (flaresolverrSolver{}).Solve(context.Background(), ClearanceConfig{}, "trojan://secret@proxy.example:443")
 	if err == nil || !strings.Contains(err.Error(), "FlareSolverr") {
