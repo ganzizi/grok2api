@@ -16,19 +16,20 @@ import (
 )
 
 const (
-	startupRecoveryBudget      = 20 * time.Second
-	startupCriticalWindow      = 2 * time.Minute
-	startupCriticalLimit       = 100
-	statsigWarmupInterval      = 15 * time.Minute
-	webQuotaStaleAfter         = 30 * time.Minute
-	webQuotaCatchupEvery       = 30 * time.Minute
-	consoleUsageMigrationEvery = 24 * time.Hour
-	consoleUsageMigrationRetry = 5 * time.Minute
-	consoleQuotaStaleAfter     = 6 * time.Hour
-	consoleQuotaCatchupEvery   = time.Minute
-	consoleQuotaCatchupBatch   = 10
-	modelCatalogStaleAfter     = 24 * time.Hour
-	modelCatalogCatchupEvery   = 6 * time.Hour
+	startupRecoveryBudget          = 20 * time.Second
+	startupCriticalWindow          = 2 * time.Minute
+	startupCriticalLimit           = 100
+	statsigWarmupInterval          = 15 * time.Minute
+	webQuotaStaleAfter             = 30 * time.Minute
+	webQuotaCatchupEvery           = 30 * time.Minute
+	consoleUsageMigrationEvery     = 24 * time.Hour
+	consoleUsageMigrationRetry     = 5 * time.Minute
+	consoleUsageMigrationBatchSize = 10
+	consoleQuotaStaleAfter         = 6 * time.Hour
+	consoleQuotaCatchupEvery       = time.Minute
+	consoleQuotaCatchupBatch       = 10
+	modelCatalogStaleAfter         = 24 * time.Hour
+	modelCatalogCatchupEvery       = 6 * time.Hour
 )
 
 type startupReport struct {
@@ -424,22 +425,33 @@ func (a *Application) runWebQuotaCatchup(ctx context.Context) {
 func (a *Application) runConsoleUsageMigration(ctx context.Context) {
 	timer := time.NewTimer(5 * time.Second)
 	defer timer.Stop()
+	var afterID uint64
+	var cycleSucceeded, cycleFailed int
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-timer.C:
 		}
-		succeeded, failed, err := a.accounts.SyncIncompleteConsoleQuotas(ctx)
+		succeeded, failed, nextAfterID, hasMore, err := a.accounts.SyncIncompleteConsoleQuotasBatch(ctx, afterID, consoleUsageMigrationBatchSize)
+		cycleSucceeded += succeeded
+		cycleFailed += failed
 		nextRun := consoleUsageMigrationEvery
 		if err != nil && ctx.Err() == nil {
 			a.logger.Warn("console_usage_migration_failed", "succeeded", succeeded, "failed", failed, "error", err)
 			nextRun = consoleUsageMigrationRetry
-		} else if failed > 0 {
-			a.logger.Warn("console_usage_migration_incomplete", "succeeded", succeeded, "failed", failed)
+		} else if hasMore {
+			afterID = nextAfterID
 			nextRun = consoleUsageMigrationRetry
-		} else if succeeded > 0 {
-			a.logger.Info("console_usage_migration_completed", "succeeded", succeeded, "failed", failed)
+		} else {
+			afterID = 0
+			if cycleFailed > 0 {
+				a.logger.Warn("console_usage_migration_incomplete", "succeeded", cycleSucceeded, "failed", cycleFailed)
+				nextRun = consoleUsageMigrationRetry
+			} else if cycleSucceeded > 0 {
+				a.logger.Info("console_usage_migration_completed", "succeeded", cycleSucceeded, "failed", cycleFailed)
+			}
+			cycleSucceeded, cycleFailed = 0, 0
 		}
 		resetTimer(timer, nextRun)
 	}

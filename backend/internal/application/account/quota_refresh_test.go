@@ -832,6 +832,97 @@ func TestSyncIncompleteConsoleQuotasMigratesOnlyLegacySnapshot(t *testing.T) {
 	}
 }
 
+func TestSyncIncompleteConsoleQuotasBatchLimitsWorkAndAdvancesCursor(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "console-quota-migration-batch.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts := relational.NewAccountRepository(database)
+	now := time.Now().UTC()
+	createIncomplete := func(name string) uint64 {
+		credential, _, createErr := accounts.UpsertByIdentity(ctx, accountdomain.Credential{
+			Provider: accountdomain.ProviderConsole, AuthType: accountdomain.AuthTypeSSO,
+			Name: name, SourceKey: name, EncryptedAccessToken: "encrypted", Enabled: true, AuthStatus: accountdomain.AuthStatusActive,
+		})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if replaceErr := accounts.ReplaceQuotaWindows(ctx, credential.ID, "", now, []accountdomain.QuotaWindow{{
+			AccountID: credential.ID, Mode: "console", Remaining: 20, Total: 20, SyncedAt: &now, Source: accountdomain.QuotaSourceDefault, UpdatedAt: now,
+		}}); replaceErr != nil {
+			t.Fatal(replaceErr)
+		}
+		return credential.ID
+	}
+	createIncomplete("first-console")
+	secondID := createIncomplete("second-console")
+	thirdID := createIncomplete("third-console")
+	adapter := &consoleQuotaSnapshotAdapter{}
+	service := NewService(accounts, nil, nil, nil, provider.NewRegistry(adapter), nil, nil)
+
+	succeeded, failed, nextAfterID, hasMore, err := service.SyncIncompleteConsoleQuotasBatch(ctx, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if succeeded != 2 || failed != 0 || adapter.fullCalls.Load() != 2 || nextAfterID != secondID || !hasMore {
+		t.Fatalf("first migration batch succeeded=%d failed=%d calls=%d next=%d hasMore=%v, want 2/0/2/%d/true", succeeded, failed, adapter.fullCalls.Load(), nextAfterID, hasMore, secondID)
+	}
+
+	succeeded, failed, nextAfterID, hasMore, err = service.SyncIncompleteConsoleQuotasBatch(ctx, nextAfterID, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if succeeded != 1 || failed != 0 || adapter.fullCalls.Load() != 3 || nextAfterID != thirdID || hasMore {
+		t.Fatalf("second migration batch succeeded=%d failed=%d calls=%d next=%d hasMore=%v, want 1/0/3/%d/false", succeeded, failed, adapter.fullCalls.Load(), nextAfterID, hasMore, thirdID)
+	}
+}
+
+func TestSyncIncompleteConsoleQuotasBatchDoesNotQueueRetryStorm(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "console-quota-migration-failure.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = database.Close() })
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accounts := relational.NewAccountRepository(database)
+	now := time.Now().UTC()
+	for index := 0; index < 2; index++ {
+		credential, _, createErr := accounts.UpsertByIdentity(ctx, accountdomain.Credential{
+			Provider: accountdomain.ProviderConsole, AuthType: accountdomain.AuthTypeSSO,
+			Name: fmt.Sprintf("failed-console-%d", index), SourceKey: fmt.Sprintf("failed-console-%d", index), EncryptedAccessToken: "encrypted", Enabled: true, AuthStatus: accountdomain.AuthStatusActive,
+		})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		if replaceErr := accounts.ReplaceQuotaWindows(ctx, credential.ID, "", now, []accountdomain.QuotaWindow{{
+			AccountID: credential.ID, Mode: "console", Remaining: 20, Total: 20, SyncedAt: &now, Source: accountdomain.QuotaSourceDefault, UpdatedAt: now,
+		}}); replaceErr != nil {
+			t.Fatal(replaceErr)
+		}
+	}
+	adapter := &consoleQuotaSnapshotAdapter{fullErr: errors.New("upstream blocked")}
+	service := NewService(accounts, nil, nil, nil, provider.NewRegistry(adapter), nil, nil)
+
+	succeeded, failed, _, _, err := service.SyncIncompleteConsoleQuotasBatch(ctx, 0, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if succeeded != 0 || failed != 2 {
+		t.Fatalf("failed migration succeeded=%d failed=%d, want 0/2", succeeded, failed)
+	}
+	if stats := service.QuotaRefreshStats(); stats.Pending != 0 || stats.Queued != 0 || stats.Running != 0 {
+		t.Fatalf("failed migration queued retry work: %#v", stats)
+	}
+}
+
 func TestSyncStaleConsoleQuotasRefreshesOnlyOldCompleteSnapshots(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "console-quota-stale.db"))
@@ -1329,6 +1420,7 @@ type consoleQuotaSnapshotAdapter struct {
 	modeCalls   atomic.Int64
 	fullStarted chan struct{}
 	fullRelease chan struct{}
+	fullErr     error
 }
 
 type rateLimitConsoleQuotaAdapter struct {
@@ -1378,6 +1470,9 @@ func (a *consoleQuotaSnapshotAdapter) Definition() provider.Definition {
 
 func (a *consoleQuotaSnapshotAdapter) SyncQuota(_ context.Context, credential accountdomain.Credential) (provider.QuotaSnapshot, error) {
 	a.fullCalls.Add(1)
+	if a.fullErr != nil {
+		return provider.QuotaSnapshot{}, a.fullErr
+	}
 	if a.fullStarted != nil {
 		a.fullStarted <- struct{}{}
 	}

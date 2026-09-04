@@ -2280,6 +2280,97 @@ func TestClearanceFallbackRejectsDifferentBinding(t *testing.T) {
 	}
 }
 
+func TestClearanceConfigUsesProviderSpecificTarget(t *testing.T) {
+	config := ClearanceConfig{TargetURL: "https://grok.com", ConsoleTargetURL: "https://console.x.ai"}
+	if got := clearanceConfigForScope(config, domain.ScopeWeb).TargetURL; got != "https://grok.com" {
+		t.Fatalf("Web clearance target = %q", got)
+	}
+	if got := clearanceConfigForScope(config, domain.ScopeConsole).TargetURL; got != "https://console.x.ai" {
+		t.Fatalf("Console clearance target = %q", got)
+	}
+}
+
+func TestClearanceAcquisitionSolvesProviderSpecificTarget(t *testing.T) {
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	solver := &clearanceSolverStub{}
+	manager := NewManager(egressRepositoryTestStub{}, cipher)
+	manager.solver = solver
+	manager.UpdateClearanceConfig(ClearanceConfig{
+		Mode: "flaresolverr", FlareSolverrURL: "http://solver", TargetURL: "https://grok.com",
+		ConsoleTargetURL: "https://console.x.ai", Timeout: time.Second, RefreshInterval: time.Hour,
+	})
+
+	web, err := manager.Acquire(context.Background(), domain.ScopeWeb, "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	web.Release()
+	if solver.targetURL != "https://grok.com" {
+		t.Fatalf("Web clearance target = %q", solver.targetURL)
+	}
+
+	console, err := manager.Acquire(context.Background(), domain.ScopeConsole, "console")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer console.Release()
+	if solver.targetURL != "https://console.x.ai" {
+		t.Fatalf("Console clearance target = %q", solver.targetURL)
+	}
+}
+
+func TestConsoleClearanceOnWebFallbackDoesNotOverwriteWebNodeState(t *testing.T) {
+	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+	if err != nil {
+		t.Fatal(err)
+	}
+	proxy, err := cipher.Encrypt("http://proxy.example:8080")
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &mutableEgressRepository{node: domain.Node{ID: 1, Name: "web", Scope: domain.ScopeWeb, Enabled: true, Health: 1, EncryptedProxyURL: proxy}}
+	solver := &clearanceSolverStub{}
+	manager := NewManager(repository, cipher)
+	manager.solver = solver
+	manager.UpdateClearanceConfig(ClearanceConfig{
+		Mode: "flaresolverr", FlareSolverrURL: "http://solver", TargetURL: "https://grok.com",
+		ConsoleTargetURL: "https://console.x.ai", Timeout: time.Second, RefreshInterval: time.Hour,
+	})
+
+	web, err := manager.Acquire(context.Background(), domain.ScopeWeb, "web")
+	if err != nil {
+		t.Fatal(err)
+	}
+	web.Release()
+	webCookie := repository.node.EncryptedCloudflareCookie
+
+	console, err := manager.Acquire(context.Background(), domain.ScopeConsole, "console")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer console.Release()
+	if console.CFCookies != "cf_clearance=value-2" {
+		t.Fatalf("Console clearance cookies = %q", console.CFCookies)
+	}
+	if repository.node.EncryptedCloudflareCookie != webCookie {
+		t.Fatal("Console fallback clearance overwrote the Web node cookie")
+	}
+	if repository.updates != 1 {
+		t.Fatalf("repository updates = %d, want only the Web clearance persistence", repository.updates)
+	}
+}
+
+func TestClearanceCacheSeparatesProviderTargets(t *testing.T) {
+	web := clearanceCacheKey(1, "https://proxy.example:8080", false, "https://grok.com")
+	console := clearanceCacheKey(1, "https://proxy.example:8080", false, "https://console.x.ai")
+	if web == console {
+		t.Fatalf("Web and Console clearance cache keys collided: %q", web)
+	}
+}
+
 func TestClearanceBackgroundRefreshSkipsResinTemplate(t *testing.T) {
 	cipher, err := security.NewCipher("AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
 	if err != nil {
@@ -2586,6 +2677,7 @@ type blockingEgressRepository struct {
 type clearanceSolverStub struct {
 	calls     int
 	proxyURL  string
+	targetURL string
 	err       error
 	noCookies bool
 }
@@ -2596,9 +2688,10 @@ func (alwaysAcquiredDistributedLock) Acquire(context.Context, string, time.Durat
 	return func() {}, true, nil
 }
 
-func (s *clearanceSolverStub) Solve(_ context.Context, _ ClearanceConfig, proxyURL string) (clearanceSolution, error) {
+func (s *clearanceSolverStub) Solve(_ context.Context, config ClearanceConfig, proxyURL string) (clearanceSolution, error) {
 	s.calls++
 	s.proxyURL = proxyURL
+	s.targetURL = config.TargetURL
 	if s.err != nil {
 		return clearanceSolution{}, s.err
 	}

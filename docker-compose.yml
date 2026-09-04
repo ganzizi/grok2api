@@ -52,14 +52,14 @@ services:
   # 在管理端将 Clearance 模式设为 FlareSolverr 或按需刷新，并使用 http://flaresolverr:8191。
   # 启动命令：docker compose --profile flaresolverr up -d
 
-  # flaresolverr:
-  #   container_name: flaresolverr
-  #   image: ghcr.io/flaresolverr/flaresolverr:latest
-  #   profiles: ["flaresolverr"]
-  #   environment:
-  #     TZ: Asia/Shanghai
-  #     LOG_LEVEL: info
-  #   restart: unless-stopped
+  flaresolverr:
+    container_name: flaresolverr
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    profiles: ["flaresolverr"]
+    environment:
+      TZ: Asia/Shanghai
+      LOG_LEVEL: info
+    restart: unless-stopped
 
   # Egress quality guard: optional; it starts only with the quality-guard profile.
   egress-quality-guard:
