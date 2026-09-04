@@ -1,6 +1,7 @@
 #!/bin/sh
 # Copy config.example.yaml to config.yaml and fill JWT, encryption, and admin secrets.
 set -eu
+umask 077
 cd "$(dirname "$0")/.."
 if [ -f config.yaml ]; then
   echo "config.yaml already exists; not overwriting."
@@ -20,6 +21,8 @@ awk -v jwt="$jwt" -v key="$key" -v pass="$pass" '
   { print }
 ' config.example.yaml > config.yaml
 chmod 600 config.yaml
-echo "wrote config.yaml (admin password printed once): $pass"
+printf '%s\n' "$pass" > admin-password.txt
+chmod 600 admin-password.txt
+echo "wrote config.yaml; administrator credentials saved to admin-password.txt (mode 600)"
 echo "login: http://127.0.0.1:8000  user=admin"
 echo "then: docker compose up -d"
