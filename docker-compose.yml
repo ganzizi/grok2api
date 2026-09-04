@@ -1,8 +1,8 @@
 name: grok2api
 
-# Lab 默认对齐 18183：qualityGuard + requestRetry 已开，sidecar 随 `up -d` 启动。
-# 默认从本仓库构建；发布后也可通过 GROK2API_IMAGE 和 GROK2API_QG_IMAGE 指定镜像。
-# 首次：cp config.example.yaml config.yaml ，改 secrets 和 bootstrapAdmin。
+# Lab defaults match 18183: qualityGuard + requestRetry are enabled, and the sidecar starts with `up -d`.
+# Build from this repository by default; set GROK2API_IMAGE or GROK2API_QG_IMAGE to use published images.
+# First run: cp config.example.yaml config.yaml, then update secrets and bootstrapAdmin.
 
 services:
   grok2api:
@@ -62,7 +62,7 @@ services:
   #     LOG_LEVEL: info
   #   restart: unless-stopped
 
-  # 出口质量守护：默认随主服务启动（passive，不额外烧 token）。
+  # Egress quality guard: starts with the main service in passive mode (no extra model tokens).
   egress-quality-guard:
     container_name: grok2api-egress-quality-guard
     image: "${GROK2API_QG_IMAGE:-ghcr.io/ganzizi/grok2api-quality-guard:latest}"

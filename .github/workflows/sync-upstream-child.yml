@@ -1,4 +1,4 @@
-name: 同步官方与子分支
+name: Sync upstream and child branches
 
 on:
   schedule:
@@ -15,24 +15,24 @@ permissions:
 
 jobs:
   sync:
-    name: 检查并生成同步分支
+    name: Check and update sync branch
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - name: 检出 main
+      - name: Check out main
         uses: actions/checkout@v4
         with:
           ref: main
           fetch-depth: 0
           persist-credentials: true
 
-      - name: 执行选择性同步
+      - name: Run selective synchronization
         id: sync
         env:
           SYNC_BRANCH: automation/upstream-child-sync
         run: bash scripts/sync-upstream-child.sh
 
-      - name: 创建或更新同步 PR
+      - name: Create or update sync PR
         if: steps.sync.outputs.has_changes == 'true'
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -42,7 +42,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! -f "$REPORT_FILE" ]]; then
-            echo "同步报告不存在：$REPORT_FILE" >&2
+            echo "sync report is missing: $REPORT_FILE" >&2
             exit 1
           fi
           existing_pr=$(gh pr list \
@@ -55,14 +55,14 @@ jobs:
           if [[ -n "$existing_pr" ]]; then
             gh pr edit "$existing_pr" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "同步官方 main 与子分支功能" \
+              --title "Sync upstream main and child features" \
               --body-file "$REPORT_FILE"
-            echo "已更新同步 PR #$existing_pr"
+            echo "updated sync PR #$existing_pr"
           else
             gh pr create \
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head "$SYNC_BRANCH" \
-              --title "同步官方 main 与子分支功能" \
+              --title "Sync upstream main and child features" \
               --body-file "$REPORT_FILE"
           fi

@@ -1,39 +1,46 @@
-# 官方与子分支同步
+# Upstream and Child Sync
 
-本仓库以 `chenyme/grok2api` 的 `main` 为基础，同时跟踪
-`lij768423-svg/grok2api` 的 `main`。同步不会直接覆盖本仓库的 `main`，而是维护
-`automation/upstream-child-sync` 分支并创建或更新一个 PR，审查通过后再合并。
+This repository uses `chenyme/grok2api` `main` as its upstream baseline and also
+tracks `lij768423-svg/grok2api` `main`. Synchronization never overwrites this
+repository's `main`; it maintains `automation/upstream-child-sync` and creates or
+updates a pull request for review.
 
-## 自动流程
+## Automatic Flow
 
-`.github/workflows/sync-upstream-child.yml` 每 6 小时运行一次，也可以在 Actions
-中手动运行：
+`.github/workflows/sync-upstream-child.yml` runs every six hours and can also be
+started manually from Actions:
 
-1. 抓取官方、子分支和本仓库 `main`。
-2. 先把本仓库 `main` 和官方 `main` 合并到同步分支。
-3. 读取 `.github/child-sync-state.json`，跳过已经适配、等价实现或明确排除的子分支提交。
-4. 只自动移植小型、非删除、代码路径受控的提交。
-5. 文档、版本标签、Docker/工作流等高风险变更进入待审查状态，不会被强行套到官方代码上。
-6. 遇到 cherry-pick 冲突时停止子分支处理，保留官方更新和状态报告，等待人工处理。
+1. Fetch the upstream, child, and fork `main` refs.
+2. Merge the fork `main` and upstream `main` into the sync branch first.
+3. Read `.github/child-sync-state.json` and skip adapted, equivalent, or explicitly excluded child commits.
+4. Automatically port only small, non-deleting commits in controlled code paths.
+5. Put documentation, version, Docker, and workflow changes into manual review instead of forcing them over the upstream code.
+6. Stop child processing on a cherry-pick conflict while preserving the upstream update and state report.
 
-同步分支只做快进推送，不使用强制推送。这样即使 PR 尚未合并，下一轮也会在已有同步结果上继续，而不会重写审查中的历史。
+The sync branch is pushed fast-forward only; it is never force-pushed. If a pull
+request remains open, the next run continues from its existing result without
+rewriting review history.
 
-## 状态清单
+## State File
 
-`.github/child-sync-state.json` 记录三类提交：
+`.github/child-sync-state.json` records three classes of commits:
 
-- `integrated`：已经完整合并、按本仓库代码适配，或已有等价实现。
-- `excluded`：只有文档、版本或发布元数据，不改变本仓库功能。
-- `pending`：需要人工审查或发生冲突；处理后应把最终结果加入 `integrated`，或者明确加入 `excluded`。
+- `integrated`: fully merged, adapted to this repository, or already implemented equivalently.
+- `excluded`: documentation, version, or release metadata only; no behavior change.
+- `pending`: requires manual review or had a conflict; after handling it, add the result to `integrated` or explicitly to `excluded`.
 
-当前状态清单特别记录了 665a73a0 的 Codex MCP Schema 简化功能，以及 94133621
-中仅移植的家宽生成器。子分支的安装提示词和品牌文档没有原样带入本仓库。
+The current state file records the Codex MCP schema simplification from 665a73a0
+and the selectively ported residential generator from 94133621. The child
+branch's installation prompt and branding documentation are intentionally not
+copied verbatim.
 
-## 人工处理待审查提交
+## Handling Pending Commits
 
-1. 打开同步 PR，先确认官方更新没有被子分支的旧代码回退。
-2. 对 `pending` 提交逐个查看 `git show <commit>`，只移植实际需要的文件或逻辑。
-3. 在本仓库运行后端、前端和脚本验证。
-4. 把处理结果写回状态清单后合并 PR。
+1. Open the sync pull request and confirm that upstream changes were not reverted by old child code.
+2. Inspect each `pending` commit with `git show <commit>` and port only the required files or logic.
+3. Run the backend, frontend, and script checks in this repository.
+4. Record the result in the state file before merging the pull request.
 
-本设计故意不把“子分支当前树”整体 merge 进来。子分支可能落后于官方并包含旧代码删除或品牌配置，按提交和文件范围筛选才能长期维护。
+This design deliberately does not merge the child branch tree as a whole. The
+child can lag behind upstream and contain deletions or branding configuration;
+commit- and path-level selection is what keeps long-term maintenance manageable.

@@ -109,7 +109,7 @@ class ParseTests(unittest.TestCase):
             self.assertIn("port: 8301", yaml)
             self.assertNotIn("alice:secret@res.example", (out / "nodes.json").read_text())
             plan = (out / "plan.md").read_text(encoding="utf-8")
-            self.assertIn("使用侧节点: 5", plan)
+            self.assertIn("use-side nodes: 5", plan)
             if os.name == "posix":
                 self.assertEqual((out / "mihomo.yaml").stat().st_mode & 0o777, 0o600)
 

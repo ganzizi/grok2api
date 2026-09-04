@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""将家宽代理清单转换为独立的 Mihomo 监听器和节点规划。"""
+"""Convert a residential proxy dump into independent Mihomo listeners and node plans."""
 
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ def _split_name(raw: str) -> tuple[str, str]:
 
 
 def parse_proxy_line(raw: str) -> dict[str, str] | None:
-    """解析一行代理，注释和空行返回 None。"""
+    """Parse one proxy line; comments and blank lines return None."""
     name, text = _split_name(raw)
     if not text or text.startswith("#") or text.startswith("//"):
         return None
@@ -47,7 +47,7 @@ def parse_proxy_line(raw: str) -> dict[str, str] | None:
             elif scheme in {"https", "http"}:
                 scheme = "http"
             else:
-                raise ValueError(f"不支持的代理协议: {scheme}")
+                raise ValueError(f"unsupported proxy scheme: {scheme}")
             host = parsed.hostname or ""
             port = parsed.port or 0
             username = unquote(parsed.username or "")
@@ -67,12 +67,12 @@ def parse_proxy_line(raw: str) -> dict[str, str] | None:
                 match.group("password"),
             )
         else:
-            raise ValueError(f"无法识别代理格式: {text[:48]}")
+            raise ValueError(f"unrecognized proxy format: {text[:48]}")
     except ValueError as exc:
-        raise ValueError(f"代理格式错误: {text[:48]} ({exc})") from exc
+        raise ValueError(f"invalid proxy format: {text[:48]} ({exc})") from exc
 
     if not host or not port:
-        raise ValueError(f"代理缺少 host 或 port: {text[:48]}")
+        raise ValueError(f"proxy is missing host or port: {text[:48]}")
 
     sid = ""
     if username:
@@ -93,7 +93,7 @@ def parse_proxy_line(raw: str) -> dict[str, str] | None:
 
 
 def parse_dump(text: str) -> list[dict[str, str]]:
-    """解析完整清单，并拒绝重复 session。"""
+    """Parse the complete dump and reject duplicate sessions."""
     sessions: list[dict[str, str]] = []
     seen: set[str] = set()
     for index, raw in enumerate(text.splitlines(), start=1):
@@ -101,16 +101,16 @@ def parse_dump(text: str) -> list[dict[str, str]]:
         if item is None:
             continue
         if item["fingerprint"] in seen:
-            raise ValueError(f"第 {index} 行重复 session: {item['host']}:{item['port']}")
+            raise ValueError(f"duplicate session on line {index}: {item['host']}:{item['port']}")
         seen.add(item["fingerprint"])
         sessions.append(item)
     if not sessions:
-        raise ValueError("没有找到家宽 session")
+        raise ValueError("no residential sessions found")
     return sessions
 
 
 def split_roles(count: int) -> tuple[int, int]:
-    """N >= 4 时预留约四分之一作为注册侧，其余作为使用侧。"""
+    """Reserve roughly one quarter for registration when N >= 4."""
     if count >= 4:
         n_reg = max(1, count // 4)
         return count - n_reg, n_reg
@@ -118,7 +118,7 @@ def split_roles(count: int) -> tuple[int, int]:
 
 
 def guard_defaults(n_use: int) -> dict[str, object]:
-    """根据使用侧 session 数生成保守的质量守护默认值。"""
+    """Generate conservative quality-guard defaults from the use-side count."""
     lab_like = n_use >= 3
     return {
         "lab_like": lab_like,
@@ -133,13 +133,13 @@ def guard_defaults(n_use: int) -> dict[str, object]:
         "warning": (
             None
             if lab_like
-            else "使用侧少于 3 条 session：只能作为冒烟环境，不能称为 lab-like"
+            else "fewer than 3 use-side sessions: smoke only, not lab-like"
         ),
     }
 
 
 def assign_roles(sessions: list[dict[str, str]]) -> list[dict[str, object]]:
-    """为每条 session 分配角色、监听端口和不重复的名称。"""
+    """Assign a role, listener port, and unique names to every session."""
     n_use, _ = split_roles(len(sessions))
     out: list[dict[str, object]] = []
     for index, session in enumerate(sessions):
@@ -171,12 +171,12 @@ def assign_roles(sessions: list[dict[str, str]]) -> list[dict[str, object]]:
 
 
 def _yaml_string(value: object) -> str:
-    """使用 JSON 字符串作为 YAML 双引号标量，避免凭据破坏配置。"""
+    """Use JSON strings as YAML double-quoted scalars so credentials stay valid."""
     return json.dumps(str(value), ensure_ascii=False)
 
 
 def render_mihomo(nodes: list[dict[str, object]]) -> str:
-    """生成每个 session 一个独立 listener 的 Mihomo 配置。"""
+    """Render a Mihomo config with one independent listener per session."""
     lines = [
         "mixed-port: 0",
         "bind-address: 127.0.0.1",
@@ -218,7 +218,7 @@ def render_mihomo(nodes: list[dict[str, object]]) -> str:
 
 
 def public_nodes(nodes: list[dict[str, object]]) -> list[dict[str, object]]:
-    """生成不包含代理账密的节点清单，便于导入 Grok2API。"""
+    """Render a node list without proxy credentials for Grok2API imports."""
     return [
         {
             "name": node["node_name"],
@@ -235,18 +235,18 @@ def public_nodes(nodes: list[dict[str, object]]) -> list[dict[str, object]]:
 
 
 def render_plan(nodes: list[dict[str, object]], guard: dict[str, object]) -> str:
-    """生成端口分配和质量守护规划。"""
+    """Render the port allocation and quality-guard plan."""
     use = [n for n in nodes if n["role"] == "use"]
     reg = [n for n in nodes if n["role"] == "reg"]
     lines = [
-        "# 家宽拆分规划",
+        "# Residential split plan",
         "",
-        f"- session 总数: {len(nodes)}",
-        f"- 使用侧节点: {len(use)}（8301+）",
-        f"- 注册侧节点: {len(reg)}（8201+）",
+        f"- sessions: {len(nodes)}",
+        f"- use-side nodes: {len(use)} (8301+)",
+        f"- register-side nodes: {len(reg)} (8201+)",
         f"- lab-like: {guard['lab_like']}",
         "",
-        "## 监听器（可安全展示）",
+        "## Listeners (safe to print)",
         "",
     ]
     for node in nodes:
@@ -256,7 +256,7 @@ def render_plan(nodes: list[dict[str, object]], guard: dict[str, object]) -> str
     lines.extend(
         [
             "",
-            "## Quality Guard 默认值（使用侧 >= 3 时接近 lab）",
+            "## Quality Guard defaults (lab-like when use-side >= 3)",
             "",
             "```yaml",
             "qualityGuard:",
@@ -269,18 +269,18 @@ def render_plan(nodes: list[dict[str, object]], guard: dict[str, object]) -> str
             "```",
             "",
             f"- RANK_SCHEDULER_ENABLED={str(guard['rank_scheduler_enabled']).lower()}",
-            f"- RANK_DRY_RUN={str(guard['rank_dry_run']).lower()}（真实流量运行一天后再关闭）",
+            f"- RANK_DRY_RUN={str(guard['rank_dry_run']).lower()}  # flip to false after one traffic day",
             "",
         ]
     )
     if guard["warning"]:
-        lines.extend(["## 注意", "", str(guard["warning"]), ""])
+        lines.extend(["## Warning", "", str(guard["warning"]), ""])
     lines.extend(
         [
-            "## Docker 注意事项",
+            "## Docker note",
             "",
-            "Grok2API 不在 host 网络时，不要在节点 URL 中填写 127.0.0.1。",
-            "应使用 host.docker.internal / 宿主机网关，或让 Grok2API 使用 network_mode: host。",
+            "If Grok2API is not on host network, do not put 127.0.0.1 in the node URL.",
+            "Use host.docker.internal / the host gateway, or run Grok2API with network_mode: host.",
             "",
         ]
     )
@@ -294,8 +294,8 @@ def _write_private(path: Path, content: str) -> None:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("dump", nargs="?", help="每行一条代理，省略时从标准输入读取")
-    parser.add_argument("--out-dir", default="egress-gen", help="生成目录，默认 egress-gen")
+    parser.add_argument("dump", nargs="?", help="one proxy per line; read stdin when omitted")
+    parser.add_argument("--out-dir", default="egress-gen", help="output directory, default: egress-gen")
     args = parser.parse_args(argv)
 
     try:
@@ -316,7 +316,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     _write_private(out / "plan.md", render_plan(nodes, guard))
     _write_private(out / "guard.json", json.dumps(guard, ensure_ascii=False, indent=2) + "\n")
-    print(f"已生成 {out}/mihomo.yaml {out}/nodes.json {out}/plan.md")
+    print(f"wrote {out}/mihomo.yaml {out}/nodes.json {out}/plan.md")
     print(
         f"sessions={len(nodes)} use={sum(1 for n in nodes if n['role'] == 'use')} "
         f"reg={sum(1 for n in nodes if n['role'] == 'reg')} lab_like={guard['lab_like']}"
