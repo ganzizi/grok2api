@@ -187,12 +187,12 @@ traffic. Choose a longer active interval when upstream quota is limited.
 
 ## Docker Compose quick start
 
-This fork's `docker-compose.yml` starts the sidecar by default (passive mode, no extra model tokens).
+The sidecar is optional and starts with the `quality-guard` Compose profile.
 
 Run from the repository root:
 
 ```sh
-docker compose up -d
+docker compose --profile quality-guard up -d --build
 ```
 
 After changing the base `qualityGuard` settings in `config.yaml`, run

@@ -127,12 +127,12 @@ qualityGuard:
 
 ## Docker Compose 快速接入
 
-本 fork 的 `docker-compose.yml` 默认启动 sidecar（passive，不额外烧 token）。
+sidecar 默认不启动，需要通过 `quality-guard` Compose profile 按需启用。
 
 从仓库根目录执行：
 
 ```sh
-docker compose up -d
+docker compose --profile quality-guard up -d --build
 ```
 
 以后修改 `config.yaml` 中的 `qualityGuard` 基础配置时，执行
