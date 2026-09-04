@@ -196,7 +196,7 @@ docker compose --profile quality-guard up -d --build
 ```
 
 After changing the base `qualityGuard` settings in `config.yaml`, run
-`docker compose restart grok2api egress-quality-guard`
+`docker compose --profile quality-guard restart grok2api egress-quality-guard`
 so the main service regenerates the bootstrap. Policy changes saved in the
 admin page still hot-reload without a restart.
 
