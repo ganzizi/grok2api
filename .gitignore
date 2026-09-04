@@ -12,7 +12,6 @@ Thumbs.db
 .env.*
 !.env.example
 /config.yaml
-/admin-password.txt
 /config.local.yaml
 /config.*.local.yaml
 /docs/*
