@@ -16,7 +16,6 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 import { Spinner } from "@/components/ui/spinner";
 import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -91,6 +90,7 @@ import { AccountQuota, ConsoleQuota, WebQuota } from "@/features/accounts/accoun
 import { AccountNameCell } from "@/features/accounts/account-name-cell";
 import { WebAccountScriptsDialog } from "@/features/accounts/web-account-scripts";
 import { WebAccountSettingsDialogs, WebAccountSettingsMenu, type WebAccountConfirmationTarget } from "@/features/accounts/web-account-settings";
+import { getEgressBindingDefaults, planEgressBinding, type BindingNode } from "@/features/accounts/egress-binding";
 import { assignEgressAccounts, listAllEgressNodes, listEgressNodes, listEgressSources, unassignEgressAccounts, type EgressScope } from "@/features/settings/settings-api";
 
 function isAbortError(error: unknown): boolean {
@@ -101,6 +101,8 @@ type WebConversionTarget = "build" | "console";
 type BuildQuotaTask = "sync" | "reset";
 type EgressConfigurationTask = "bind" | "unbind";
 type BuildDetectCounts = Record<BuildDetectItemDTO["outcome"], number>;
+type EgressBindingMutationInput = { ids: string[]; provider: AccountProvider; nodes: BindingNode[]; perNodeLimit: number };
+type EgressBindingMutationResult = { assigned: number; unassigned: number; error?: unknown };
 
 const emptyBuildDetectCounts = (): BuildDetectCounts => ({ ok: 0, invalid: 0, failed: 0 });
 
@@ -149,7 +151,8 @@ export function AccountsPage() {
   const [batchQuotaTask, setBatchQuotaTask] = useState<BuildQuotaTask>("sync");
   const [egressConfigurationOpen, setEgressConfigurationOpen] = useState(false);
   const [egressConfigurationTask, setEgressConfigurationTask] = useState<EgressConfigurationTask>("bind");
-  const [egressNodeID, setEgressNodeID] = useState("");
+  const [egressNodeIDs, setEgressNodeIDs] = useState<Set<string>>(() => new Set());
+  const [egressPerNodeLimit, setEgressPerNodeLimit] = useState("");
   const [cleanupOpen, setCleanupOpen] = useState(false);
   const [cleanupStatuses, setCleanupStatuses] = useState<Set<AccountCleanupStatus>>(() => new Set());
   // Cleanup preview + optional linked deletion (independent from the delete dialogs' state).
@@ -859,16 +862,35 @@ export function AccountsPage() {
   });
 
   const bindEgressMutation = useMutation({
-    mutationFn: () => {
-      if (!egressNodeID) throw new Error(t("accounts.bindEgressEmpty"));
-      return assignEgressAccounts(egressNodeID, provider, [...selected]);
+    mutationFn: async (input: EgressBindingMutationInput): Promise<EgressBindingMutationResult> => {
+      const plan = planEgressBinding(input.ids, input.nodes, input.perNodeLimit);
+      if (plan.assignments.length === 0) {
+        throw new Error(t("accounts.bindEgressNoCapacity"));
+      }
+      let assigned = 0;
+      for (const assignment of plan.assignments) {
+        try {
+          const result = await assignEgressAccounts(assignment.nodeID, input.provider, assignment.accountIDs);
+          assigned += result.assigned;
+        } catch (error) {
+          return { assigned, unassigned: input.ids.length - assigned, error };
+        }
+      }
+      return { assigned, unassigned: input.ids.length - assigned };
     },
-    onSuccess: () => {
+    onSuccess: (result) => {
       clearSelection();
       setEgressConfigurationOpen(false);
       invalidateAccountData();
       void queryClient.invalidateQueries({ queryKey: ["egress-nodes"] });
-      toast.success(t("accounts.egressBound"));
+      if (result.error) {
+        const detail = result.error instanceof Error ? `: ${result.error.message}` : "";
+        toast.warning(`${t("accounts.egressBoundPartial", { assigned: result.assigned, unassigned: result.unassigned })}${detail}`);
+      } else if (result.unassigned > 0) {
+        toast.warning(t("accounts.egressBoundPartial", { assigned: result.assigned, unassigned: result.unassigned }));
+      } else {
+        toast.success(t("accounts.egressBound"));
+      }
     },
     onError: showError,
   });
@@ -1166,6 +1188,16 @@ export function AccountsPage() {
     });
   }
 
+  function toggleEgressNode(id: string, checked: boolean): void {
+    setEgressNodeIDs((current) => {
+      const next = new Set(current);
+      if (checked) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+    setEgressPerNodeLimit("");
+  }
+
   function changeSort(field: string, initialOrder: SortOrder): void {
     setSort((current) => nextTableSort(current, field, initialOrder));
     setPage(1);
@@ -1205,6 +1237,13 @@ export function AccountsPage() {
   const providerAccountTotal = provider === "grok_build" ? buildSummary.total : provider === "grok_web" ? webSummary.total : consoleSummary.total;
   const hasProviderAccounts = providerAccountTotal > 0 || (result?.total ?? 0) > 0;
   const bindableEgressNodes = (egressNodesQuery.data?.items ?? []).filter((node) => node.enabled && node.proxyConfigured && scopeSupportsAccountProvider(node.scope, provider));
+  const selectedEgressNodes = bindableEgressNodes.filter((node) => egressNodeIDs.has(node.id));
+  const egressBindingDefaults = getEgressBindingDefaults(selected.size, selectedEgressNodes);
+  const parsedEgressPerNodeLimit = Number(egressPerNodeLimit);
+  const egressBindingPerNodeLimit = Number.isInteger(parsedEgressPerNodeLimit) && parsedEgressPerNodeLimit > 0
+    ? Math.min(parsedEgressPerNodeLimit, egressBindingDefaults.maxPerNode)
+    : egressBindingDefaults.defaultPerNode;
+  const egressBindingInputValue = egressPerNodeLimit || (egressBindingDefaults.defaultPerNode > 0 ? String(egressBindingDefaults.defaultPerNode) : "");
   const egressFilterSearchTerm = egressFilterOptionsSearch.trim().toLocaleLowerCase();
   const consoleWebNodePages = provider === "grok_console" ? (egressFilterConsoleWebNodesQuery.data?.pages ?? []) : [];
   const scopedEgressNodes = [...(egressFilterNodesQuery.data?.pages ?? []), ...consoleWebNodePages]
@@ -1428,7 +1467,8 @@ export function AccountsPage() {
                   setBatchConcurrencyOpen(true);
                 }}>{t("accounts.batchSetConcurrency")}</Button>
                 <Button variant="secondary" size="sm" disabled={bulkTaskPending} onClick={() => {
-                  setEgressNodeID("");
+                  setEgressNodeIDs(new Set());
+                  setEgressPerNodeLimit("");
                   setEgressConfigurationTask("bind");
                   setEgressConfigurationOpen(true);
                 }}>{t("accounts.egressConfiguration")}</Button>
@@ -2084,10 +2124,11 @@ export function AccountsPage() {
         setEgressConfigurationOpen(open);
         if (!open) {
           setEgressConfigurationTask("bind");
-          setEgressNodeID("");
+          setEgressNodeIDs(new Set());
+          setEgressPerNodeLimit("");
         }
       }}>
-        <DialogContent className="sm:max-w-[460px]">
+        <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
             <DialogTitle>{t("accounts.egressConfigurationTitle", { count: selected.size })}</DialogTitle>
             <DialogDescription>{t("accounts.egressConfigurationDescription")}</DialogDescription>
@@ -2106,17 +2147,48 @@ export function AccountsPage() {
                 {!egressNodesQuery.isPending && !egressNodesQuery.isError ? (
                   bindableEgressNodes.length > 0 ? (
                     <div className="space-y-2">
-                      <Label htmlFor="account-egress-node">{t("accounts.bindEgressNode")}</Label>
-                      <Select value={egressNodeID} onValueChange={setEgressNodeID} disabled={bindEgressMutation.isPending}>
-                        <SelectTrigger id="account-egress-node"><SelectValue placeholder={t("accounts.bindEgressEmpty")} /></SelectTrigger>
-                        <SelectContent>
-                          {bindableEgressNodes.map((node) => (
-                            <SelectItem key={node.id} value={node.id}>
-                              {node.name} ({node.assignedAccountCount}{node.accountCapacity > 0 ? ` / ${node.accountCapacity}` : ` / ${t("settings.egress.unlimited")}`})
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+                      <div className="flex items-center justify-between gap-3">
+                        <Label>{t("accounts.bindEgressNodes")}</Label>
+                        <span className="text-xs text-muted-foreground">{t("accounts.bindEgressSelected", { count: selectedEgressNodes.length })}</span>
+                      </div>
+                      <div className="max-h-64 space-y-1 overflow-y-auto rounded-md border p-1">
+                        {bindableEgressNodes.map((node) => {
+                          const checked = egressNodeIDs.has(node.id);
+                          const remaining = node.accountCapacity > 0 ? Math.max(0, node.accountCapacity - node.assignedAccountCount) : null;
+                          return (
+                            <label key={node.id} className="flex cursor-pointer items-center gap-3 rounded-md px-2.5 py-2 text-sm hover:bg-muted/60">
+                              <Checkbox checked={checked} disabled={bindEgressMutation.isPending} onCheckedChange={(value) => toggleEgressNode(node.id, value === true)} />
+                              <span className="min-w-0 flex-1 truncate">{node.name}</span>
+                              <span className="shrink-0 text-xs tabular-nums text-muted-foreground">
+                                {node.assignedAccountCount}{node.accountCapacity > 0 ? ` / ${node.accountCapacity} (${remaining})` : ` / ${t("settings.egress.unlimited")}`}
+                              </span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {selectedEgressNodes.length > 0 ? (
+                        <div className="space-y-2 rounded-md bg-muted/40 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <Label htmlFor="account-egress-per-node">{t("accounts.bindEgressPerNode")}</Label>
+                            <span className="text-xs text-muted-foreground">{t("accounts.bindEgressMax", { count: egressBindingDefaults.maxPerNode })}</span>
+                          </div>
+                          <Input
+                            id="account-egress-per-node"
+                            type="number"
+                            min={egressBindingDefaults.maxPerNode > 0 ? 1 : undefined}
+                            max={egressBindingDefaults.maxPerNode > 0 ? egressBindingDefaults.maxPerNode : undefined}
+                            step={1}
+                            inputMode="numeric"
+                            value={egressBindingInputValue}
+                            disabled={bindEgressMutation.isPending || egressBindingDefaults.maxPerNode < 1}
+                            onChange={(event) => setEgressPerNodeLimit(event.target.value)}
+                          />
+                          <p className="text-xs leading-5 text-muted-foreground">
+                            {t("accounts.bindEgressAuto", { count: egressBindingDefaults.defaultPerNode })}
+                          </p>
+                          {egressBindingDefaults.maxPerNode < 1 ? <p className="text-xs text-destructive">{t("accounts.bindEgressNoCapacity")}</p> : null}
+                        </div>
+                      ) : <p className="text-xs leading-5 text-muted-foreground">{t("accounts.bindEgressEmpty")}</p>}
                     </div>
                   ) : <p className="text-xs leading-5 text-muted-foreground">{t("accounts.bindEgressNoNodes")}</p>
                 ) : null}
@@ -2128,9 +2200,16 @@ export function AccountsPage() {
             <Button
               type="button"
               size="sm"
-              disabled={bindEgressMutation.isPending || unbindEgressMutation.isPending || (egressConfigurationTask === "bind" && (!egressNodeID || egressNodesQuery.isPending || egressNodesQuery.isError))}
+              disabled={bindEgressMutation.isPending || unbindEgressMutation.isPending || (egressConfigurationTask === "bind" && (selectedEgressNodes.length === 0 || egressBindingPerNodeLimit < 1 || egressNodesQuery.isPending || egressNodesQuery.isError))}
               onClick={() => {
-                if (egressConfigurationTask === "bind") bindEgressMutation.mutate();
+                if (egressConfigurationTask === "bind") {
+                  bindEgressMutation.mutate({
+                    ids: [...selected],
+                    provider,
+                    nodes: selectedEgressNodes.map((node) => ({ id: node.id, accountCapacity: node.accountCapacity, assignedAccountCount: node.assignedAccountCount })),
+                    perNodeLimit: egressBindingPerNodeLimit,
+                  });
+                }
                 else unbindEgressMutation.mutate();
               }}
             >
