@@ -14,6 +14,9 @@ export type EgressBindingDefaults = {
   maxPerNode: number;
 };
 
+export type EgressBindingScope = "grok_build" | "grok_web" | "grok_console" | "grok_web_asset" | "grok_console_asset";
+export type EgressBindingProvider = "grok_build" | "grok_web" | "grok_console";
+
 export type EgressBindingPlan = {
   assignments: EgressBindingAssignment[];
   unassignedAccountIDs: string[];
@@ -22,6 +25,10 @@ export type EgressBindingPlan = {
 
 function nonNegativeInteger(value: number): number {
   return Number.isFinite(value) ? Math.max(0, Math.floor(value)) : 0;
+}
+
+export function supportsEgressBindingScope(scope: EgressBindingScope, provider: EgressBindingProvider): boolean {
+  return scope === provider;
 }
 
 export function getEgressBindingCapacity(node: BindingNode, selectedAccountCount: number): number {

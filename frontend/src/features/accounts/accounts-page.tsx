@@ -90,7 +90,7 @@ import { AccountQuota, ConsoleQuota, WebQuota } from "@/features/accounts/accoun
 import { AccountNameCell } from "@/features/accounts/account-name-cell";
 import { WebAccountScriptsDialog } from "@/features/accounts/web-account-scripts";
 import { WebAccountSettingsDialogs, WebAccountSettingsMenu, type WebAccountConfirmationTarget } from "@/features/accounts/web-account-settings";
-import { getEgressBindingDefaults, normalizeEgressBindingLimit, planEgressBinding, type BindingNode } from "@/features/accounts/egress-binding";
+import { getEgressBindingDefaults, normalizeEgressBindingLimit, planEgressBinding, supportsEgressBindingScope, type BindingNode } from "@/features/accounts/egress-binding";
 import { assignEgressAccounts, listAllEgressNodes, listEgressNodes, listEgressSources, unassignEgressAccounts, type EgressScope } from "@/features/settings/settings-api";
 
 function isAbortError(error: unknown): boolean {
@@ -1236,7 +1236,7 @@ export function AccountsPage() {
   }
   const providerAccountTotal = provider === "grok_build" ? buildSummary.total : provider === "grok_web" ? webSummary.total : consoleSummary.total;
   const hasProviderAccounts = providerAccountTotal > 0 || (result?.total ?? 0) > 0;
-  const bindableEgressNodes = (egressNodesQuery.data?.items ?? []).filter((node) => node.enabled && node.proxyConfigured && scopeSupportsAccountProvider(node.scope, provider));
+  const bindableEgressNodes = (egressNodesQuery.data?.items ?? []).filter((node) => node.enabled && node.proxyConfigured && supportsEgressBindingScope(node.scope, provider));
   const selectedEgressNodes = bindableEgressNodes.filter((node) => egressNodeIDs.has(node.id));
   const egressBindingDefaults = getEgressBindingDefaults(selected.size, selectedEgressNodes);
   const parsedEgressPerNodeLimit = Number(egressPerNodeLimit);

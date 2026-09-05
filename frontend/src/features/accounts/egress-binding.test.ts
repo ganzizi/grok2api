@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { getEgressBindingCapacity, getEgressBindingDefaults, normalizeEgressBindingLimit, planEgressBinding } from "./egress-binding.ts";
+import * as egressBinding from "./egress-binding.ts";
 
 const nodes = [
   { id: "1", accountCapacity: 10, assignedAccountCount: 4 },
@@ -61,4 +62,14 @@ test("normalizes manually entered per-node limits to the visible maximum", () =>
   assert.equal(normalizeEgressBindingLimit("", 2), "");
   assert.equal(normalizeEgressBindingLimit("0", 2), "");
   assert.equal(normalizeEgressBindingLimit("not-a-number", 2), "");
+});
+
+test("keeps Console account binding choices on Console nodes", () => {
+  const supportsEgressBindingScope = (egressBinding as unknown as {
+    supportsEgressBindingScope?: (scope: string, provider: string) => boolean;
+  }).supportsEgressBindingScope;
+  assert.equal(supportsEgressBindingScope?.("grok_console", "grok_console"), true);
+  assert.equal(supportsEgressBindingScope?.("grok_web", "grok_console"), false);
+  assert.equal(supportsEgressBindingScope?.("grok_build", "grok_build"), true);
+  assert.equal(supportsEgressBindingScope?.("grok_web", "grok_web"), true);
 });
