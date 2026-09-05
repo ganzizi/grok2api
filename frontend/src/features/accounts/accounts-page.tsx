@@ -90,7 +90,7 @@ import { AccountQuota, ConsoleQuota, WebQuota } from "@/features/accounts/accoun
 import { AccountNameCell } from "@/features/accounts/account-name-cell";
 import { WebAccountScriptsDialog } from "@/features/accounts/web-account-scripts";
 import { WebAccountSettingsDialogs, WebAccountSettingsMenu, type WebAccountConfirmationTarget } from "@/features/accounts/web-account-settings";
-import { getEgressBindingDefaults, planEgressBinding, type BindingNode } from "@/features/accounts/egress-binding";
+import { getEgressBindingDefaults, normalizeEgressBindingLimit, planEgressBinding, type BindingNode } from "@/features/accounts/egress-binding";
 import { assignEgressAccounts, listAllEgressNodes, listEgressNodes, listEgressSources, unassignEgressAccounts, type EgressScope } from "@/features/settings/settings-api";
 
 function isAbortError(error: unknown): boolean {
@@ -1243,7 +1243,8 @@ export function AccountsPage() {
   const egressBindingPerNodeLimit = Number.isInteger(parsedEgressPerNodeLimit) && parsedEgressPerNodeLimit > 0
     ? Math.min(parsedEgressPerNodeLimit, egressBindingDefaults.maxPerNode)
     : egressBindingDefaults.defaultPerNode;
-  const egressBindingInputValue = egressPerNodeLimit || (egressBindingDefaults.defaultPerNode > 0 ? String(egressBindingDefaults.defaultPerNode) : "");
+  const normalizedEgressPerNodeLimit = normalizeEgressBindingLimit(egressPerNodeLimit, egressBindingDefaults.maxPerNode);
+  const egressBindingInputValue = normalizedEgressPerNodeLimit || (egressBindingDefaults.defaultPerNode > 0 ? String(egressBindingDefaults.defaultPerNode) : "");
   const egressFilterSearchTerm = egressFilterOptionsSearch.trim().toLocaleLowerCase();
   const consoleWebNodePages = provider === "grok_console" ? (egressFilterConsoleWebNodesQuery.data?.pages ?? []) : [];
   const scopedEgressNodes = [...(egressFilterNodesQuery.data?.pages ?? []), ...consoleWebNodePages]
@@ -2181,7 +2182,7 @@ export function AccountsPage() {
                             inputMode="numeric"
                             value={egressBindingInputValue}
                             disabled={bindEgressMutation.isPending || egressBindingDefaults.maxPerNode < 1}
-                            onChange={(event) => setEgressPerNodeLimit(event.target.value)}
+                            onChange={(event) => setEgressPerNodeLimit(normalizeEgressBindingLimit(event.target.value, egressBindingDefaults.maxPerNode))}
                           />
                           <p className="text-xs leading-5 text-muted-foreground">
                             {t("accounts.bindEgressAuto", { count: egressBindingDefaults.defaultPerNode })}

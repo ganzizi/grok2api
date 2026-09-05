@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { getEgressBindingCapacity, getEgressBindingDefaults, planEgressBinding } from "./egress-binding.ts";
+import { getEgressBindingCapacity, getEgressBindingDefaults, normalizeEgressBindingLimit, planEgressBinding } from "./egress-binding.ts";
 
 const nodes = [
   { id: "1", accountCapacity: 10, assignedAccountCount: 4 },
@@ -54,4 +54,11 @@ test("returns no assignments when selected nodes have no remaining capacity", ()
   const result = planEgressBinding(["a"], [{ id: "1", accountCapacity: 1, assignedAccountCount: 1 }], 1);
   assert.deepEqual(result.assignments, []);
   assert.deepEqual(result.unassignedAccountIDs, ["a"]);
+});
+
+test("normalizes manually entered per-node limits to the visible maximum", () => {
+  assert.equal(normalizeEgressBindingLimit("999", 2), "2");
+  assert.equal(normalizeEgressBindingLimit("", 2), "");
+  assert.equal(normalizeEgressBindingLimit("0", 2), "");
+  assert.equal(normalizeEgressBindingLimit("not-a-number", 2), "");
 });

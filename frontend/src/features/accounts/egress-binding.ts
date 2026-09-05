@@ -40,6 +40,15 @@ export function getEgressBindingDefaults(selectedAccountCount: number, nodes: Bi
   return { defaultPerNode, maxPerNode };
 }
 
+export function normalizeEgressBindingLimit(value: string, maxPerNode: number): string {
+  const raw = value.trim();
+  const maximum = nonNegativeInteger(maxPerNode);
+  if (raw === "" || maximum === 0) return "";
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) return "";
+  return String(Math.min(parsed, maximum));
+}
+
 export function planEgressBinding(accountIDs: string[], nodes: BindingNode[], requestedPerNode: number): EgressBindingPlan {
   const defaults = getEgressBindingDefaults(accountIDs.length, nodes);
   const requested = nonNegativeInteger(requestedPerNode);
