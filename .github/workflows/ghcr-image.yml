@@ -264,13 +264,42 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build and publish
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./tools/egress-quality-guard/Dockerfile
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          provenance: false
-          sbom: false
+        shell: bash
+        env:
+          IMAGE_TAGS: ${{ steps.meta.outputs.tags }}
+          IMAGE_LABELS: ${{ steps.meta.outputs.labels }}
+        run: |
+          set -euo pipefail
+
+          tag_args=()
+          while IFS= read -r tag; do
+            [[ -n "$tag" ]] || continue
+            tag_args+=(--tag "$tag")
+          done <<< "$IMAGE_TAGS"
+
+          label_args=()
+          while IFS= read -r label; do
+            [[ -n "$label" ]] || continue
+            label_args+=(--label "$label")
+          done <<< "$IMAGE_LABELS"
+
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "quality-guard image publish attempt ${attempt}/${max_attempts}"
+            if docker buildx build \
+              --file ./tools/egress-quality-guard/Dockerfile \
+              --platform linux/amd64,linux/arm64 \
+              --push \
+              "${tag_args[@]}" \
+              "${label_args[@]}" \
+              --provenance=false \
+              --sbom=false \
+              .; then
+              exit 0
+            fi
+            if [[ "$attempt" == "$max_attempts" ]]; then
+              echo "quality-guard image publish failed after ${max_attempts} attempts" >&2
+              exit 1
+            fi
+            sleep "$((attempt * 20))"
+          done
