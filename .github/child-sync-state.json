@@ -62,6 +62,16 @@
       "commit": "665a73a0a0bdfd5b1d405b50e07de97a7ee1b39d",
       "mode": "adapted",
       "note": "Codex MCP schema simplification was integrated while preserving the upstream normalization logic"
+    },
+    {
+      "commit": "62ae4347cee557847f63835cc7b892219d848b8b",
+      "mode": "adapted",
+      "files": [
+        "backend/internal/application/gateway/quality_retry.go",
+        "backend/internal/application/gateway/quality_retry_scan.go",
+        "backend/internal/application/gateway/quality_retry_test.go"
+      ],
+      "note": "ported vis<8 and plaintext-ratio dump protection plus streamed-content visible-token accounting; preserved the Fork's overflow-safe configurable encrypted floor and provider isolation; excluded child release metadata, Compose tags, and branding documentation"
     }
   ],
   "excluded": [
@@ -86,10 +96,5 @@
       "reason": "documentation only for fake-enc and Codex MCP behavior"
     }
   ],
-  "pending": [
-    {
-      "commit": "62ae4347cee557847f63835cc7b892219d848b8b",
-      "reason": "the change includes sensitive paths, deletions, or exceeds the automatic review size (files: AI_GROK2API_INSTALL.md,README.md README.zh-CN.md,VERSION backend/internal/application/gateway/quality_retry.go,backend/internal/application/gateway/quality_retry_scan.go backend/internal/application/gateway/quality_retry_test.go,docker-compose.yml)"
-    }
-  ]
+  "pending": []
 }

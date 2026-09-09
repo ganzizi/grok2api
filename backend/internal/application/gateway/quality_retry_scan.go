@@ -135,14 +135,12 @@ func qualityProtocolForOperation(operation audit.Operation) string {
 }
 
 func (s *qualityScanState) signals() QualityStreamSignals {
+	// Visible tokens come only from streamed content deltas (chat content /
+	// Responses output_text / message items). Do not lift from
+	// usage.output - usage.reasoning: chat completion usage can still include
+	// reasoning and would make short dumps look like long answers.
 	visibleRunes := max(s.visibleRunes, s.aggregateRunes)
 	visible := int64((visibleRunes + 3) / 4)
-	if s.usage.Reported {
-		fromUsage := s.usage.OutputTokens - s.usage.ReasoningTokens
-		if fromUsage > visible {
-			visible = fromUsage
-		}
-	}
 	output := s.outputTokens
 	if s.usage.Reported && s.usage.OutputTokens > output {
 		output = s.usage.OutputTokens

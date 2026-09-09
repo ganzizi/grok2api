@@ -173,21 +173,31 @@ func encryptedThinkingFloor(minBytes, bytesPerToken int, reasoningTokens int64) 
 	return floor
 }
 
-func qualityIsBurstDump(sig QualityStreamSignals, minOutput int64) bool {
-	if sig.PlaintextThinking {
+func qualityFastFlush(sig QualityStreamSignals, limitMS int64) bool {
+	return sig.FirstVisible && sig.VisibleFlushMS >= 0 && sig.VisibleFlushMS < limitMS
+}
+
+func qualityMeetsEncryptedFloor(sig QualityStreamSignals) bool {
+	if sig.EncryptedBytes <= 0 {
 		return false
 	}
-	visible := sig.VisibleTokens
 	floor := sig.EncryptedFloor
 	if floor <= 0 {
 		floor = encryptedThinkingFloor(0, 0, sig.ReasoningTokens)
 	}
-	barelyCeiling := int64(math.MaxInt64)
-	if floor <= math.MaxInt64/2 {
-		barelyCeiling = floor * 2
+	return int64(sig.EncryptedBytes) >= floor
+}
+
+func qualityHasDumpBill(sig QualityStreamSignals) bool {
+	return sig.ReasoningTokens >= defaultBurstMinReasoning || qualityMeetsEncryptedFloor(sig)
+}
+
+func qualityIsBurstDump(sig QualityStreamSignals, minOutput int64) bool {
+	_ = minOutput
+	if sig.PlaintextThinking {
+		return false
 	}
-	barelyCipher := sig.EncryptedBytes > 0 && int64(sig.EncryptedBytes) < barelyCeiling
-	flushed := sig.FirstVisible && sig.VisibleFlushMS >= 0 && sig.VisibleFlushMS < defaultBurstFlushMS
+	visible := sig.VisibleTokens
 	heavyReasoning := sig.ReasoningTokens >= defaultBurstMinReasoning
 	shortVisible := visible > 0 && visible < defaultBurstMaxVisible
 	// Hold timed out, then a short greeting dumped with a large reasoning bill
@@ -195,38 +205,45 @@ func qualityIsBurstDump(sig QualityStreamSignals, minOutput int64) bool {
 	if sig.HoldExpired && shortVisible && heavyReasoning {
 		return true
 	}
-	// Cipher met the floor so HasThinking is true, but visible tokens then
-	// dump in <1s with almost no answer (148 out / 140 reasoning in 0.7s).
-	if flushed && shortVisible && heavyReasoning {
-		return true
-	}
-	if barelyCipher && flushed && (visible >= minOutput || heavyReasoning) {
+	if qualityFastFlush(sig, defaultBurstFlushMS) && qualityHasDumpBill(sig) {
 		return true
 	}
 	return false
 }
 
-// qualityIsFakeEncryptedDump is the 18190 screenshot pattern: no plaintext
-// reasoning deltas, ciphertext / usage.reasoning_tokens look legitimate,
-// then the whole answer arrives in a short flush (first-token ≈ duration).
+// qualityIsFakeEncryptedDump is the 18190 / 18183 dump: ciphertext or a
+// large reasoning bill, then the visible answer arrives in <2s. Visible
+// token count is not a gate — vis<8 chat dumps must also be withheld.
 func qualityIsFakeEncryptedDump(sig QualityStreamSignals, minOutput int64) bool {
+	_ = minOutput
 	if sig.PlaintextThinking {
 		return false
 	}
-	if minOutput <= 0 {
-		minOutput = defaultQualityMinOutput
-	}
-	if sig.VisibleTokens < minOutput {
+	if !qualityFastFlush(sig, defaultFakeEncFlushMS) {
 		return false
 	}
-	flushed := sig.FirstVisible && sig.VisibleFlushMS >= 0 && sig.VisibleFlushMS < defaultFakeEncFlushMS
-	if !flushed {
+	return qualityHasDumpBill(sig)
+}
+
+// qualityIsFastReasoningRatioDump catches plaintext thinking that is still a
+// fast dump: billed reasoning is at least 80% of output and visible content
+// arrives in under two seconds.
+func qualityIsFastReasoningRatioDump(sig QualityStreamSignals) bool {
+	if !sig.PlaintextThinking || !qualityFastFlush(sig, defaultFakeEncFlushMS) {
 		return false
 	}
-	if sig.ReasoningTokens >= defaultBurstMinReasoning || sig.EncryptedBytes >= defaultMinEncryptedBytes {
-		return true
+	output := sig.OutputTokens
+	if output <= 0 {
+		output = sig.VisibleTokens + sig.ReasoningTokens
 	}
-	return false
+	if output <= 0 || sig.ReasoningTokens <= 0 {
+		return false
+	}
+	// For non-negative integers, reasoning*5 >= output*4 is equivalent to
+	// reasoning >= ceil(output*4/5). Compute the ceiling without multiplying
+	// near the int64 limit.
+	requiredReasoning := output - output/5
+	return sig.ReasoningTokens >= requiredReasoning
 }
 
 // qualityIsCipherDrool is the 128k TUI status-loop: ciphertext met the
@@ -257,17 +274,10 @@ func ClassifyQualityHold(sig QualityStreamSignals, minOutput int64) QualityVerdi
 	if minOutput <= 0 {
 		minOutput = defaultQualityMinOutput
 	}
-	// Readable reasoning deltas are direct proof and can preserve the original
-	// low-latency release path. Ciphertext-only evidence remains provisional so
-	// the classifier can observe visible output and terminal usage regardless of
-	// how the SSE events were split across transport reads.
-	if sig.HasReasoningDelta {
-		return QualityDeliver
+	if qualityIsBurstDump(sig, minOutput) || qualityIsCipherDrool(sig, minOutput) || qualityIsFakeEncryptedDump(sig, minOutput) || qualityIsFastReasoningRatioDump(sig) {
+		return QualityWithhold
 	}
 	if sig.HasThinking {
-		if qualityIsBurstDump(sig, minOutput) || qualityIsCipherDrool(sig, minOutput) || qualityIsFakeEncryptedDump(sig, minOutput) {
-			return QualityWithhold
-		}
 		if sig.PlaintextThinking {
 			return QualityDeliver
 		}

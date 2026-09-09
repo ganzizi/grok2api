@@ -123,8 +123,23 @@ func TestClassifyQualityHoldBurst(t *testing.T) {
 			want: QualityWithhold,
 		},
 		{
-			name: "plaintext thinking EOS dump still delivers",
-			sig:  QualityStreamSignals{HasThinking: true, PlaintextThinking: true, VisibleTokens: 1425, ReasoningTokens: 1416, EncryptedBytes: 8000, FirstVisible: true, VisibleFlushMS: 4, Terminal: true},
+			name: "plaintext thinking EOS dump withholds on reasoning ratio",
+			sig:  QualityStreamSignals{HasThinking: true, PlaintextThinking: true, VisibleTokens: 9, OutputTokens: 1425, ReasoningTokens: 1416, EncryptedBytes: 8000, FirstVisible: true, VisibleFlushMS: 4, Terminal: true},
+			want: QualityWithhold,
+		},
+		{
+			name: "18183 vis7 chat dump withholds without minOutput",
+			sig:  QualityStreamSignals{HasThinking: true, VisibleTokens: 7, OutputTokens: 3812, ReasoningTokens: 3805, EncryptedBytes: 8000, FirstVisible: true, VisibleFlushMS: 1, Terminal: true},
+			want: QualityWithhold,
+		},
+		{
+			name: "18183 vis1 chat dump withholds",
+			sig:  QualityStreamSignals{HasThinking: true, VisibleTokens: 1, OutputTokens: 2313, ReasoningTokens: 2312, EncryptedBytes: 4000, FirstVisible: true, VisibleFlushMS: 1, Terminal: true},
+			want: QualityWithhold,
+		},
+		{
+			name: "plaintext thinking slow stream still delivers",
+			sig:  QualityStreamSignals{HasThinking: true, PlaintextThinking: true, VisibleTokens: 400, OutputTokens: 900, ReasoningTokens: 500, FirstVisible: true, VisibleFlushMS: 8000, Terminal: true},
 			want: QualityDeliver,
 		},
 		{
@@ -168,6 +183,39 @@ func TestClassifyQualityHoldBurst(t *testing.T) {
 			t.Parallel()
 			if got := ClassifyQualityHold(test.sig, 8); got != test.want {
 				t.Fatalf("ClassifyQualityHold() = %s, want %s (%#v)", got, test.want, test.sig)
+			}
+		})
+	}
+}
+
+func TestClassifyQualityHoldFastReasoningRatioBoundaries(t *testing.T) {
+	t.Parallel()
+	maxOutput := int64(math.MaxInt64)
+	maxThreshold := maxOutput - maxOutput/5
+	tests := []struct {
+		name      string
+		output    int64
+		reasoning int64
+		flushMS   int64
+		want      QualityVerdict
+	}{
+		{name: "exactly eighty percent withholds", output: 10, reasoning: 8, flushMS: 1999, want: QualityWithhold},
+		{name: "below eighty percent delivers", output: 10, reasoning: 7, flushMS: 1999, want: QualityDeliver},
+		{name: "exactly two seconds delivers", output: 10, reasoning: 8, flushMS: 2000, want: QualityDeliver},
+		{name: "max int exact threshold withholds", output: maxOutput, reasoning: maxThreshold, flushMS: 1999, want: QualityWithhold},
+		{name: "max int below threshold delivers", output: maxOutput, reasoning: maxThreshold - 1, flushMS: 1999, want: QualityDeliver},
+		{name: "max output with low reasoning delivers", output: maxOutput, reasoning: 8, flushMS: 1999, want: QualityDeliver},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			sig := QualityStreamSignals{
+				HasThinking: true, PlaintextThinking: true,
+				OutputTokens: test.output, ReasoningTokens: test.reasoning,
+				FirstVisible: true, VisibleFlushMS: test.flushMS, Terminal: true,
+			}
+			if got := ClassifyQualityHold(sig, 8); got != test.want {
+				t.Fatalf("ClassifyQualityHold() = %s, want %s (%#v)", got, test.want, sig)
 			}
 		})
 	}
@@ -425,6 +473,52 @@ func TestObserveQualityChunkShortNoThinkIgnoresFakeReasoningUsage(t *testing.T) 
 	}
 	if got := ClassifyQualityHold(sig, 32); got != QualityDeliver {
 		t.Fatalf("short visible reply must not be withheld by inflated usage: %s (%#v)", got, sig)
+	}
+}
+
+func TestSignalsVisibleIgnoresUsageCompletion(t *testing.T) {
+	t.Parallel()
+	content := "Hi"
+	chat := qualityScanState{protocol: qualityProtocolChat}
+	ObserveQualityChunk(&chat, []byte(sse(
+		`data: {"choices":[{"delta":{"content":"`+content+`"}}]}`,
+		`data: {"usage":{"completion_tokens":2000,"completion_tokens_details":{"reasoning_tokens":0}}}`,
+		"data: [DONE]",
+	)))
+	chatSig := chat.signals()
+	if chatSig.VisibleTokens > 4 || chatSig.OutputTokens != 2000 {
+		t.Fatalf("chat must not treat usage completion as visible: %#v", chatSig)
+	}
+
+	resp := qualityScanState{protocol: qualityProtocolResponses}
+	ObserveQualityChunk(&resp, []byte(sse(
+		`data: {"type":"response.output_text.delta","delta":"`+content+`"}`,
+		`data: {"type":"response.completed","response":{"id":"resp_1","usage":{"output_tokens":2000,"output_tokens_details":{"reasoning_tokens":0}}}}`,
+	)))
+	respSig := resp.signals()
+	if respSig.VisibleTokens != chatSig.VisibleTokens {
+		t.Fatalf("chat/responses visible mismatch: chat=%#v responses=%#v", chatSig, respSig)
+	}
+	if respSig.VisibleTokens > 4 || respSig.OutputTokens != 2000 {
+		t.Fatalf("responses must not treat usage output as visible: %#v", respSig)
+	}
+}
+
+func TestObserveQualityChunkChatTinyVisibleHugeReasoningWithholds(t *testing.T) {
+	t.Parallel()
+	state := qualityScanState{protocol: qualityProtocolChat}
+	ObserveQualityChunk(&state, []byte(sse(
+		": grok2api-reasoning-start",
+		`data: {"choices":[{"delta":{"content":"你好"}}]}`,
+		`data: {"usage":{"completion_tokens":3812,"completion_tokens_details":{"reasoning_tokens":3805}}}`,
+		"data: [DONE]",
+	)))
+	sig := state.signals()
+	if sig.VisibleTokens >= 8 {
+		t.Fatalf("tiny chat dump visible inflated: %#v", sig)
+	}
+	if got := ClassifyQualityHold(sig, 8); got != QualityWithhold {
+		t.Fatalf("vis<8 reasoning dump must withhold: %s (%#v)", got, sig)
 	}
 }
 
