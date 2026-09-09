@@ -188,6 +188,39 @@ func TestClassifyQualityHoldBurst(t *testing.T) {
 	}
 }
 
+func TestClassifyQualityHoldFastReasoningRatioBoundaries(t *testing.T) {
+	t.Parallel()
+	maxOutput := int64(math.MaxInt64)
+	maxThreshold := maxOutput - maxOutput/5
+	tests := []struct {
+		name      string
+		output    int64
+		reasoning int64
+		flushMS   int64
+		want      QualityVerdict
+	}{
+		{name: "exactly eighty percent withholds", output: 10, reasoning: 8, flushMS: 1999, want: QualityWithhold},
+		{name: "below eighty percent delivers", output: 10, reasoning: 7, flushMS: 1999, want: QualityDeliver},
+		{name: "exactly two seconds delivers", output: 10, reasoning: 8, flushMS: 2000, want: QualityDeliver},
+		{name: "max int exact threshold withholds", output: maxOutput, reasoning: maxThreshold, flushMS: 1999, want: QualityWithhold},
+		{name: "max int below threshold delivers", output: maxOutput, reasoning: maxThreshold - 1, flushMS: 1999, want: QualityDeliver},
+		{name: "max output with low reasoning delivers", output: maxOutput, reasoning: 8, flushMS: 1999, want: QualityDeliver},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			t.Parallel()
+			sig := QualityStreamSignals{
+				HasThinking: true, PlaintextThinking: true,
+				OutputTokens: test.output, ReasoningTokens: test.reasoning,
+				FirstVisible: true, VisibleFlushMS: test.flushMS, Terminal: true,
+			}
+			if got := ClassifyQualityHold(sig, 8); got != test.want {
+				t.Fatalf("ClassifyQualityHold() = %s, want %s (%#v)", got, test.want, sig)
+			}
+		})
+	}
+}
+
 func TestClassifyQualityHoldBurstUsesConfiguredFloor(t *testing.T) {
 	t.Parallel()
 	configuredHigh := QualityStreamSignals{

@@ -239,7 +239,11 @@ func qualityIsFastReasoningRatioDump(sig QualityStreamSignals) bool {
 	if output <= 0 || sig.ReasoningTokens <= 0 {
 		return false
 	}
-	return sig.ReasoningTokens*5 >= output*4
+	// For non-negative integers, reasoning*5 >= output*4 is equivalent to
+	// reasoning >= ceil(output*4/5). Compute the ceiling without multiplying
+	// near the int64 limit.
+	requiredReasoning := output - output/5
+	return sig.ReasoningTokens >= requiredReasoning
 }
 
 // qualityIsCipherDrool is the 128k TUI status-loop: ciphertext met the
