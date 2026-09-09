@@ -59,6 +59,22 @@ state_has() {
         "$STATE_FILE" >/dev/null
 }
 
+# Read the last upstream commit whose content was synchronized into the Fork.
+state_upstream_baseline() {
+    jq -r '.sync.upstreamBaseline // empty' "$STATE_FILE"
+}
+
+# Record the upstream baseline represented by the sync branch.
+state_set_upstream_baseline() {
+    local commit=$1
+    local temp_file
+    temp_file=$(mktemp "${STATE_FILE}.XXXXXX")
+    jq --arg commit "$commit" '
+        .sync = ((.sync // {}) + {upstreamBaseline: $commit})
+    ' "$STATE_FILE" > "$temp_file"
+    mv "$temp_file" "$STATE_FILE"
+}
+
 # Add an integrated entry and clear a pending entry for the same commit.
 state_add_integrated() {
     local commit=$1
@@ -161,6 +177,9 @@ write_report() {
         printf -- '- Upstream baseline: `%s`\n' "$(git rev-parse "refs/remotes/upstream/$UPSTREAM_REF")"
         printf -- '- Child repository: `%s`\n' "$CHILD_URL"
         printf -- '- Child baseline: `%s`\n' "$(git rev-parse "refs/remotes/child/$CHILD_REF")"
+        if [[ -n "${UPSTREAM_BASELINE:-}" ]]; then
+            printf -- '- Previous upstream baseline: `%s`\n' "$UPSTREAM_BASELINE"
+        fi
         printf -- '- Sync branch: `%s`\n\n' "$SYNC_BRANCH"
         printf '## Applied\n\n'
         if ((${#APPLIED[@]} == 0)); then
@@ -230,17 +249,42 @@ main() {
     if ! git merge --no-edit "refs/remotes/origin/main" >/dev/null; then
         git merge --abort || true
         write_report
-        die "the sync branch conflicts with this fork's main; resolve it manually first"
+        die "the sync branch conflicts with this fork's main; resolve them manually first"
     fi
-    if ! git merge --no-edit "refs/remotes/upstream/$UPSTREAM_REF" >/dev/null; then
-        git merge --abort || true
-        write_report
-        die "upstream changes conflict with the sync branch; resolve them manually first"
+
+    UPSTREAM_BASELINE=$(state_upstream_baseline)
+    if [[ -n "$UPSTREAM_BASELINE" ]] && ! git cat-file -e "$UPSTREAM_BASELINE^{commit}" 2>/dev/null; then
+        log "$YELLOW" "ignoring invalid upstream baseline in state file: $UPSTREAM_BASELINE"
+        UPSTREAM_BASELINE=""
     fi
+    if [[ -n "$UPSTREAM_BASELINE" ]] && ! git merge-base --is-ancestor "$UPSTREAM_BASELINE" "refs/remotes/upstream/$UPSTREAM_REF"; then
+        log "$YELLOW" "ignoring upstream baseline that is not an ancestor of the current upstream ref: $UPSTREAM_BASELINE"
+        UPSTREAM_BASELINE=""
+    fi
+
+    if [[ -n "$UPSTREAM_BASELINE" ]]; then
+        if [[ "$UPSTREAM_BASELINE" == "$(git rev-parse "refs/remotes/upstream/$UPSTREAM_REF")" ]]; then
+            log "$GREEN" "upstream baseline is current; no historical upstream merge required"
+        else
+            log "$BLUE" "applying upstream changes after baseline $UPSTREAM_BASELINE"
+            if ! git diff --binary --find-renames "$UPSTREAM_BASELINE" "refs/remotes/upstream/$UPSTREAM_REF" | git apply --3way --index; then
+                git reset --merge HEAD || true
+                write_report
+                die "upstream changes after the recorded baseline conflict with the Fork; resolve them manually first"
+            fi
+        fi
+    else
+        if ! git merge --no-edit "refs/remotes/upstream/$UPSTREAM_REF" >/dev/null; then
+            git merge --abort || true
+            write_report
+            die "upstream changes conflict with the sync branch; resolve them manually first"
+        fi
+    fi
+    state_set_upstream_baseline "$(git rev-parse "refs/remotes/upstream/$UPSTREAM_REF")"
     local after_official
     after_official=$(git rev-parse HEAD)
-    if [[ "$before_official" != "$after_official" ]]; then
-        log "$GREEN" "merged upstream changes into the sync branch"
+    if [[ "$before_official" != "$after_official" ]] || ! git diff --quiet -- "$STATE_FILE"; then
+        log "$GREEN" "recorded the current upstream baseline on the sync branch"
     fi
 
     local candidate

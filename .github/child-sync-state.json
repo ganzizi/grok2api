@@ -8,6 +8,9 @@
     "repository": "https://github.com/lij768423-svg/grok2api.git",
     "ref": "main"
   },
+  "sync": {
+    "upstreamBaseline": "8913b53fe92307a6f111b2885ab298a43c74a9ba"
+  },
   "integrated": [
     {
       "commit": "730c8fef10835769033d3d4e8f9da94a53e849e0",
