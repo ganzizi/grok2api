@@ -211,6 +211,14 @@ main() {
         remote_sync_exists=true
     fi
 
+    # A previously merged sync branch is stale state, not a review baseline.
+    # Start from the current Fork main so old history cannot reintroduce merge
+    # conflicts after the sync PR has already landed.
+    if [[ "$remote_sync_exists" == true ]] && git merge-base --is-ancestor "refs/remotes/origin/$SYNC_BRANCH" "refs/remotes/origin/main"; then
+        log "$YELLOW" "the existing sync branch is already merged into main; starting from current main"
+        remote_sync_exists=false
+    fi
+
     if [[ "$remote_sync_exists" == true ]]; then
         git switch --detach "refs/remotes/origin/$SYNC_BRANCH"
     else
