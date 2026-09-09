@@ -55,7 +55,7 @@ jobs:
           if [[ -n "$existing_pr" ]]; then
             gh pr edit "$existing_pr" \
               --repo "$GITHUB_REPOSITORY" \
-              --title "Sync upstream main and child features" \
+              --title "chore: sync upstream main and child features" \
               --body-file "$REPORT_FILE"
             echo "updated sync PR #$existing_pr"
           else
@@ -63,6 +63,6 @@ jobs:
               --repo "$GITHUB_REPOSITORY" \
               --base main \
               --head "$SYNC_BRANCH" \
-              --title "Sync upstream main and child features" \
+              --title "chore: sync upstream main and child features" \
               --body-file "$REPORT_FILE"
           fi
