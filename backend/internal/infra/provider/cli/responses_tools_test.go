@@ -304,7 +304,7 @@ func TestNormalizeResponsesRequestSimplifiesNullableNonObjectFunctionRoot(t *tes
 	normalized, compatibility, err := normalizeResponsesRequest([]byte(`{
 		"model":"public","input":"hello",
 		"tools":[{"type":"function","name":"invalid","parameters":{
-			"anyOf":[{"type":"object"},{"type":"string"},{"type":"null"}]
+			"anyOf":[{"type":"string"},{"type":"null"}]
 		}}]
 	}`), "grok-4.5")
 	if err != nil {
@@ -313,7 +313,40 @@ func TestNormalizeResponsesRequestSimplifiesNullableNonObjectFunctionRoot(t *tes
 	assertSimplifiedBuildFunctionParameters(t, normalized, compatibility, "invalid")
 }
 
-func TestNormalizeResponsesRequestSimplifiesNullableLocalRefFunctionRoot(t *testing.T) {
+func TestNormalizeResponsesRequestFiltersNonObjectBranchesInAnyOf(t *testing.T) {
+	normalized, compatibility, err := normalizeResponsesRequest([]byte(`{
+		"model":"public","input":"hello",
+		"tools":[{"type":"function","name":"automation_update","parameters":{
+			"anyOf":[
+				{"type":"object","properties":{"task":{"type":"string"}},"required":["task"]},
+				{"type":"string"}
+			]
+		}}]
+	}`), "grok-4.5")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if compatibility == nil {
+		t.Fatal("expected compatibility tracker")
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(normalized, &payload); err != nil {
+		t.Fatal(err)
+	}
+	parameters := payload["tools"].([]any)[0].(map[string]any)["parameters"].(map[string]any)
+	if parameters["type"] != "object" {
+		t.Fatalf("expected parameters.type=object, got %#v", parameters)
+	}
+	if _, exists := parameters["anyOf"]; exists {
+		t.Fatalf("expected anyOf to be hoisted or removed, got %#v", parameters)
+	}
+	props := parameters["properties"].(map[string]any)
+	if props["task"].(map[string]any)["type"] != "string" {
+		t.Fatalf("expected task property, got %#v", props)
+	}
+}
+
+func TestNormalizeResponsesRequestRemovesNullableLocalRefFunctionRoot(t *testing.T) {
 	normalized, compatibility, err := normalizeResponsesRequest([]byte(`{
 		"model":"public","input":"hello",
 		"tools":[{"type":"function","name":"lookup","parameters":{
