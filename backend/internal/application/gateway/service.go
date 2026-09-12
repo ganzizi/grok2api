@@ -1253,6 +1253,15 @@ attemptLoop:
 				pinnedID = input.ForcedAccountID
 			}
 			failureAttempts.captureSelectionFailure(pinnedID, "", err)
+			// previous_response_id pins the first attempt to one account.
+			// If that account is already quota-exhausted or cooling, keep
+			// the successful-path pin invariant but fail over to the pool
+			// instead of aborting the whole request.
+			if input.ForcedAccountID == 0 && ownership != nil && pinnedSelectionAllowsPoolFailover(err) {
+				s.logger.Warn("pinned_account_unavailable_failover", "request_id", input.RequestID, "account_id", ownership.AccountID, "error", err)
+				ownership = releasePinnedOwnership(s, &input, ownership, excluded, &qualityCrossAccountReplay, &attemptPolicy)
+				continue
+			}
 			break
 		}
 		excluded[lease.Credential.ID] = true
@@ -1508,6 +1517,7 @@ attemptLoop:
 				goto handleResponse
 			}
 			failureHandled := false
+			releasedFreeQuotaPin := false
 			if lease.QuotaMode != "" && response.StatusCode == http.StatusTooManyRequests {
 				state, reconcileErr := s.accounts.ReconcileRateLimit(ctx, credential.ID, lease.QuotaMode, retryAfter)
 				s.applyRateLimitReconciliation(ctx, credential, response.StatusCode, retryAfter, state, reconcileErr)
@@ -1517,12 +1527,14 @@ attemptLoop:
 				// period is not a reliable reset promise. Probe again after 24 hours.
 				s.selector.MarkFreeQuotaExhausted(ctx, credential, used, limit)
 				failureHandled = true
+				releasedFreeQuotaPin = true
 			} else if lastFailure.ModelQuotaExhausted {
 				s.selector.MarkModelQuotaExhausted(ctx, credential, lease.Billing, route.UpstreamModel, retryAfter)
 				failureHandled = true
 			} else if lastFailure.FreeQuotaExhausted {
 				s.selector.MarkFreeQuotaExhausted(ctx, credential, 0, 0)
 				failureHandled = true
+				releasedFreeQuotaPin = true
 			} else if lastFailure.SpendingLimitBlocked || lastFailure.QuotaExhausted {
 				err := s.selector.MarkPaymentQuotaExhausted(ctx, credential, quotaRecoveryHints{Billing: lease.Billing})
 				failureHandled = err == nil
@@ -1568,6 +1580,10 @@ attemptLoop:
 			lease.Release()
 			lastErr = fmt.Errorf("上游返回 %d", response.StatusCode)
 			s.logger.Warn("upstream_request_failed", "request_id", input.RequestID, "account_id", credential.ID, "provider", credential.Provider, "status", response.StatusCode, "upstream_code", lastFailure.UpstreamCode, "account_scoped", lastFailure.AccountScoped)
+			if releasedFreeQuotaPin && input.ForcedAccountID == 0 && ownership != nil {
+				s.logger.Warn("pinned_account_quota_exhausted_failover", "request_id", input.RequestID, "account_id", credential.ID)
+				ownership = releasePinnedOwnership(s, &input, ownership, excluded, &qualityCrossAccountReplay, &attemptPolicy)
+			}
 			if shouldStopForNonAccountFingerprint(failureFingerprints, lastFailure) {
 				break
 			}
@@ -2084,6 +2100,41 @@ func (b *finalizingBody) Close() error {
 // shouldStopForNonAccountFingerprint 仅对非账号归因故障累计指纹并在达到阈值后停止换号。
 // 账号级失败（额度、鉴权、冷却等）继续轮询其它凭证。
 // 未知 403、Team 模型限流只跳过当前号，不累计指纹、不提前结束整次请求。
+// pinnedSelectionAllowsPoolFailover is the stored-response pin exception:
+// a previous_response_id must stay on account A while A can still serve the
+// request, but free-quota / cooling misses may rotate to the remaining pool.
+func pinnedSelectionAllowsPoolFailover(err error) bool {
+	var unavailable *SelectionUnavailableError
+	if !errors.As(err, &unavailable) {
+		return false
+	}
+	switch unavailable.Reason {
+	case SelectionQuotaExhausted, SelectionCooling, SelectionModelCooling:
+		return true
+	default:
+		return false
+	}
+}
+
+// releasePinnedOwnership drops the in-request stored-response pin so the
+// attempt loop can select from the account pool. Hosted-tool replay safety
+// still applies via canReplayQualityHoldAcrossAccounts.
+func releasePinnedOwnership(s *Service, input *Input, ownership *inferencedomain.ResponseOwnership, excluded map[uint64]bool, qualityCrossAccountReplay *bool, attemptPolicy *routingAttemptPolicy) *inferencedomain.ResponseOwnership {
+	if ownership != nil && excluded != nil {
+		excluded[ownership.AccountID] = true
+	}
+	if input != nil {
+		input.PreviousResponseID = ""
+	}
+	if qualityCrossAccountReplay != nil && input != nil {
+		*qualityCrossAccountReplay = canReplayQualityHoldAcrossAccounts(*input, nil)
+	}
+	if attemptPolicy != nil && s != nil && input != nil {
+		*attemptPolicy = newRequestRoutingAttemptPolicy(int(s.maxAttempts.Load()), input.ForcedAccountID != 0)
+	}
+	return nil
+}
+
 func shouldStopForNonAccountFingerprint(fingerprints map[string]int, failure *UpstreamFailure) bool {
 	if failure == nil || failure.AccountScoped || failure.Fingerprint == "" {
 		return false

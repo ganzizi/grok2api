@@ -4035,7 +4035,7 @@ func TestGatewayBarePermissionDeniedRetainsEgressRetryForWebAndConsole(t *testin
 	}
 }
 
-func TestGatewayPreviousResponseIDDoesNotCrossAccounts(t *testing.T) {
+func TestGatewayPreviousResponseIDFailoversAfterFreeQuotaExhaustion(t *testing.T) {
 	ctx := context.Background()
 	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "prev-response-pin.db"))
 	if err != nil {
@@ -4089,7 +4089,7 @@ func TestGatewayPreviousResponseIDDoesNotCrossAccounts(t *testing.T) {
 	exhausted := `{"code":"subscription:free-usage-exhausted","error":"tokens (actual/limit): 10/10"}`
 	adapter := &scriptedBuildAdapter{responses: map[uint64][]scriptedBuildResponse{
 		credentials[0].ID: {{status: http.StatusTooManyRequests, body: exhausted, header: http.Header{"X-Should-Retry": {"false"}}}},
-		credentials[1].ID: {{status: http.StatusOK, body: `{"id":"resp-should-not-run"}`}},
+		credentials[1].ID: {{status: http.StatusOK, body: `{"id":"resp-failover"}`}},
 	}}
 	registry := provider.NewRegistry(adapter)
 	sticky := memory.NewStickyStore()
@@ -4097,16 +4097,124 @@ func TestGatewayPreviousResponseIDDoesNotCrossAccounts(t *testing.T) {
 	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, time.Second, time.Minute)
 	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, 3)
 
-	_, err = service.CreateResponse(ctx, Input{
+	result, err := service.CreateResponse(ctx, Input{
 		RequestID: "req-pin", ClientKey: clientKey, PublicModel: "grok-pin",
 		PreviousResponseID: "resp-pin-root",
 		Body:               []byte(`{"model":"grok-pin","previous_response_id":"resp-pin-root","input":"hello"}`),
 	})
-	if err == nil {
-		t.Fatal("pinned free-usage exhaustion should fail without cross-account failover")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if attempts := adapter.Attempts(); len(attempts) != 1 || attempts[0] != credentials[0].ID {
-		t.Fatalf("previous_response_id must stay pinned to account A, attempts=%#v", attempts)
+	body, readErr := io.ReadAll(result.Body)
+	result.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(body) != `{"id":"resp-failover"}` {
+		t.Fatalf("failover body = %s", body)
+	}
+	if attempts := adapter.Attempts(); len(attempts) != 2 || attempts[0] != credentials[0].ID || attempts[1] != credentials[1].ID {
+		t.Fatalf("free-usage exhaustion should pin A then fail over to B, attempts=%#v", attempts)
+	}
+}
+
+func TestGatewayPreviousResponseIDFailoversWhenPinnedAccountAlreadyExhausted(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "prev-response-pin-pre-exhausted.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	accountRepo := relational.NewAccountRepository(database)
+	modelRepo := relational.NewModelRepository(database)
+	auditRepo := relational.NewAuditRepository(database)
+	responseRepo := relational.NewResponseRepository(database)
+	keyRepo := relational.NewClientKeyRepository(database)
+
+	credentials := make([]account.Credential, 0, 2)
+	for index, name := range []string{"pin-a", "pin-b"} {
+		credential, _, createErr := accountRepo.UpsertByIdentity(ctx, account.Credential{
+			Provider: account.ProviderBuild, Name: name, SourceKey: name, EncryptedAccessToken: name,
+			ExpiresAt: time.Now().Add(time.Hour), Enabled: true, AuthStatus: account.AuthStatusActive,
+			Priority: 200 - index, MaxConcurrent: 1,
+		})
+		if createErr != nil {
+			t.Fatal(createErr)
+		}
+		credentials = append(credentials, credential)
+	}
+	if err := modelRepo.UpsertDiscovered(ctx, account.ProviderBuild, []string{"grok-pin"}); err != nil {
+		t.Fatal(err)
+	}
+	for _, credential := range credentials {
+		if err := modelRepo.ReplaceAccountCapabilities(ctx, credential.ID, []string{"grok-pin"}, time.Now().UTC()); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clientKey, err := keyRepo.Create(ctx, clientkey.Key{
+		Name: "pin-key", Prefix: "pin", SecretHash: strings.Repeat("4", 64), EncryptedSecret: "encrypted",
+		Enabled: true, RPMLimit: 120, MaxConcurrent: 8,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	if err := responseRepo.Save(ctx, inferencedomain.ResponseOwnership{
+		ResponseID: "resp-pin-root", AccountID: credentials[0].ID, ClientKeyID: clientKey.ID,
+		Provider: account.ProviderBuild, PromptCacheKey: "session-pin", ExpiresAt: now.Add(time.Hour),
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	adapter := &scriptedBuildAdapter{responses: map[uint64][]scriptedBuildResponse{
+		credentials[1].ID: {{status: http.StatusOK, body: `{"id":"resp-pre-exhausted-failover"}`}},
+	}}
+	registry := provider.NewRegistry(adapter)
+	sticky := memory.NewStickyStore()
+	accountService := accountapp.NewService(accountRepo, auditRepo, memory.NewDeviceSessionStore(), sticky, registry, testCipher(t), nil)
+	selector := NewSelector(accountRepo, memory.NewConcurrencyLimiter(), sticky, registry, time.Hour, time.Second, time.Minute)
+	selector.MarkFreeQuotaExhausted(ctx, credentials[0], 10, 10)
+	service := NewService(modelRepo, auditRepo, accountService, clientkeyapp.NewService(nil, nil, nil, 60, 4, nil), registry, selector, responseRepo, 3)
+
+	result, err := service.CreateResponse(ctx, Input{
+		RequestID: "req-pin-pre-exhausted", ClientKey: clientKey, PublicModel: "grok-pin",
+		PreviousResponseID: "resp-pin-root",
+		Body:               []byte(`{"model":"grok-pin","previous_response_id":"resp-pin-root","input":"hello"}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body, readErr := io.ReadAll(result.Body)
+	result.Body.Close()
+	if readErr != nil {
+		t.Fatal(readErr)
+	}
+	if string(body) != `{"id":"resp-pre-exhausted-failover"}` {
+		t.Fatalf("pre-exhausted failover body = %s", body)
+	}
+	if attempts := adapter.Attempts(); len(attempts) != 1 || attempts[0] != credentials[1].ID {
+		t.Fatalf("already-exhausted pin should skip A and use B, attempts=%#v", attempts)
+	}
+}
+
+func TestPinnedSelectionAllowsPoolFailover(t *testing.T) {
+	if pinnedSelectionAllowsPoolFailover(errors.New("network")) {
+		t.Fatal("generic errors must not unpin")
+	}
+	if pinnedSelectionAllowsPoolFailover(&SelectionUnavailableError{Reason: SelectionPinnedUnavailable}) {
+		t.Fatal("disabled/unavailable pin owner must not unpin")
+	}
+	if !pinnedSelectionAllowsPoolFailover(&SelectionUnavailableError{Reason: SelectionQuotaExhausted}) {
+		t.Fatal("quota exhausted pin miss should unpin")
+	}
+	if !pinnedSelectionAllowsPoolFailover(&SelectionUnavailableError{Reason: SelectionCooling}) {
+		t.Fatal("cooling pin miss should unpin")
+	}
+	if !pinnedSelectionAllowsPoolFailover(&SelectionUnavailableError{Reason: SelectionModelCooling}) {
+		t.Fatal("model cooling pin miss should unpin")
 	}
 }
 
