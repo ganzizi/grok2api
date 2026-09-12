@@ -15,6 +15,10 @@ Thumbs.db
 /config.local.yaml
 /config.*.local.yaml
 /docs/*
+!/docs/ops/
+!/docs/ops/**
+!/docs/superpowers/
+!/docs/superpowers/**
 /docs/rules/*
 /backend/docs/goal/
 *.har
