@@ -24,6 +24,7 @@ REPORT_FILE="${SYNC_REPORT_FILE:-${RUNNER_TEMP:-${TMPDIR:-/tmp}}/grok2api-sync-r
 declare -a APPLIED=()
 declare -a EXCLUDED=()
 declare -a PENDING=()
+declare -a UPSTREAM_EQUIVALENT=()
 BLOCKED=false
 
 # Log helper
@@ -62,6 +63,14 @@ state_has() {
 # Read the last upstream commit whose content was synchronized into the Fork.
 state_upstream_baseline() {
     jq -r '.sync.upstreamBaseline // empty' "$STATE_FILE"
+}
+
+# Check whether an upstream commit is already represented by an adapted Fork implementation.
+state_has_upstream_equivalent() {
+    local commit=$1
+    jq -e --arg commit "$commit" \
+        '((.sync.upstreamEquivalent // []) | map(select(.commit == $commit)) | length) > 0' \
+        "$STATE_FILE" >/dev/null
 }
 
 # Record the upstream baseline represented by the sync branch.
@@ -181,6 +190,12 @@ write_report() {
             printf -- '- Previous upstream baseline: `%s`\n' "$UPSTREAM_BASELINE"
         fi
         printf -- '- Sync branch: `%s`\n\n' "$SYNC_BRANCH"
+        printf '## Upstream commits already represented by adapted Fork code\n\n'
+        if ((${#UPSTREAM_EQUIVALENT[@]} == 0)); then
+            printf -- '- None newly skipped in this run.\n'
+        else
+            printf '%s\n' "${UPSTREAM_EQUIVALENT[@]}"
+        fi
         printf '## Applied\n\n'
         if ((${#APPLIED[@]} == 0)); then
             printf -- '- No new commits were automatically ported in this run.\n'
@@ -262,16 +277,30 @@ main() {
         UPSTREAM_BASELINE=""
     fi
 
+    local current_upstream_commit upstream_commit subject
     if [[ -n "$UPSTREAM_BASELINE" ]]; then
         if [[ "$UPSTREAM_BASELINE" == "$(git rev-parse "refs/remotes/upstream/$UPSTREAM_REF")" ]]; then
             log "$GREEN" "upstream baseline is current; no historical upstream merge required"
         else
             log "$BLUE" "applying upstream changes after baseline $UPSTREAM_BASELINE"
-            if ! git diff --binary --find-renames "$UPSTREAM_BASELINE" "refs/remotes/upstream/$UPSTREAM_REF" | git apply --3way --index; then
-                git reset --merge HEAD || true
-                write_report
-                die "upstream changes after the recorded baseline conflict with the Fork; resolve them manually first"
-            fi
+            current_upstream_commit=$UPSTREAM_BASELINE
+            while IFS= read -r upstream_commit; do
+                [[ -n "$upstream_commit" ]] || continue
+                subject=$(git show -s --format='%s' "$upstream_commit")
+                if state_has_upstream_equivalent "$upstream_commit"; then
+                    log "$YELLOW" "skipping upstream commit already represented by adapted Fork code: $upstream_commit $subject"
+                    UPSTREAM_EQUIVALENT+=("- \`$upstream_commit\` $subject: state marks the behavior as already represented by adapted Fork code")
+                    current_upstream_commit=$upstream_commit
+                    continue
+                fi
+                log "$BLUE" "applying upstream commit $upstream_commit $subject"
+                if ! git diff --binary --find-renames "$current_upstream_commit" "$upstream_commit" | git apply --3way --index; then
+                    git reset --merge HEAD || true
+                    write_report
+                    die "upstream changes after the recorded baseline conflict with the Fork; resolve them manually first"
+                fi
+                current_upstream_commit=$upstream_commit
+            done < <(git rev-list --reverse --first-parent "$UPSTREAM_BASELINE..refs/remotes/upstream/$UPSTREAM_REF")
         fi
     else
         if ! git merge --no-edit "refs/remotes/upstream/$UPSTREAM_REF" >/dev/null; then
@@ -294,7 +323,7 @@ main() {
             "$candidate...refs/remotes/child/$CHILD_REF"
     )
 
-    local commit subject files reason
+    local commit files reason
     for commit in "${child_commits[@]}"; do
         if state_has integrated "$commit" || state_has excluded "$commit"; then
             continue
