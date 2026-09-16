@@ -9,7 +9,7 @@
     "ref": "main"
   },
   "sync": {
-    "upstreamBaseline": "b88ee1f52a7f89dcf98a5499fef7e2399b9161af",
+    "upstreamBaseline": "906b9493b099d192381c698d4e320fafeccb851c",
     "upstreamEquivalent": [
       {
         "commit": "50c09e26db46a7bb7632f5b323e92fcc0e115090",
