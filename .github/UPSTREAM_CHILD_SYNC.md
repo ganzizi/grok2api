@@ -34,6 +34,13 @@ and the selectively ported residential generator from 94133621. The child
 branch's installation prompt and branding documentation are intentionally not
 copied verbatim.
 
+When the official branch later re-lands a feature that is already present as an
+adapted Fork implementation but has a different patch, record that upstream
+commit in `sync.upstreamEquivalent` with a behavior-review note. The sync
+script advances past that commit without replaying its conflicting patch, then
+continues applying later upstream commits such as version updates. Add an
+equivalence entry only after comparing the implementation and regression tests.
+
 ## Handling Pending Commits
 
 1. Open the sync pull request and confirm that upstream changes were not reverted by old child code.

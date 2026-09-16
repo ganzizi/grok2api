@@ -9,7 +9,13 @@
     "ref": "main"
   },
   "sync": {
-    "upstreamBaseline": "b88ee1f52a7f89dcf98a5499fef7e2399b9161af"
+    "upstreamBaseline": "b88ee1f52a7f89dcf98a5499fef7e2399b9161af",
+    "upstreamEquivalent": [
+      {
+        "commit": "50c09e26db46a7bb7632f5b323e92fcc0e115090",
+        "note": "the official merge re-lands the quality-retry feature already present as the adapted child commit 62ae4347; preserve the Fork's PlaintextThinking, Build-only policy, overflow-safe floor, and regression tests"
+      }
+    ]
   },
   "integrated": [
     {
