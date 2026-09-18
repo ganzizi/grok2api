@@ -24,7 +24,7 @@
 > Check out [DEEIX-AI / DEEIX-Chat](https://github.com/DEEIX-AI/DEEIX-Chat), a lightweight, integrated AI platform for model routing, chat, files, tools, billing, identity, and operations.
 
 > [!NOTE]
-> **This fork (ganzizi/grok2api) includes the egress quality guard integration.** The child-compatible `qualityGuard` and Build `requestRetry` defaults are enabled in passive mode; Web and Console streaming stay on their native paths. Images are built from this repository by default; set `GROK2API_IMAGE` or `GROK2API_QG_IMAGE` to use a registry image.
+> **This fork (ganzizi/grok2api) includes the egress quality guard integration.** The child-compatible `qualityGuard` and Build `requestRetry` defaults are enabled in passive mode; Web and Console streaming stay on their native paths. Images are built from this repository by default; set `GROK2API_IMAGE` or `GROK2API_QG_IMAGE` to use a registry image. Fork deltas for the next upstream merge: [docs/ops/fork-delta.md](./docs/ops/fork-delta.md).
 
 > [!NOTE]
 > This project is for technical research and learning purposes only. Please comply with Grok's official terms of use and local laws when using it; otherwise, you will be solely responsible for all consequences!

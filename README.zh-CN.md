@@ -24,7 +24,7 @@
 > 推荐个人新项目 [DEEIX-AI / DEEIX-Chat](https://github.com/DEEIX-AI/DEEIX-Chat)：面向多模型路由、对话、文件、工具、计费与运维的一体化轻量 AI 平台。
 
 > [!NOTE]
-> **本 fork（ganzizi/grok2api）已集成出口质量守护。** 兼容子分支的 `qualityGuard` 与 Build `requestRetry` 默认以 passive 模式启用；Web 和 Console 流式请求保持原生路径，不进入 Build 专用质量拦截。默认从本仓库构建镜像，也可通过 `GROK2API_IMAGE` 或 `GROK2API_QG_IMAGE` 指定镜像。
+> **本 fork（ganzizi/grok2api）已集成出口质量守护。** 兼容子分支的 `qualityGuard` 与 Build `requestRetry` 默认以 passive 模式启用；Web 和 Console 流式请求保持原生路径，不进入 Build 专用质量拦截。默认从本仓库构建镜像，也可通过 `GROK2API_IMAGE` 或 `GROK2API_QG_IMAGE` 指定镜像。相对上游的行为差与下次合入清单见 [docs/ops/fork-delta.md](./docs/ops/fork-delta.md)。
 
 > [!NOTE]
 > 本项目仅供技术研究与学习交流。使用时请务必遵循 Grok 官方的使用条款及当地法律法规，否则一切后果自负！
