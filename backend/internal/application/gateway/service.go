@@ -526,6 +526,7 @@ func (s *Service) CreateResponse(ctx context.Context, input Input) (*Result, err
 
 func (s *Service) CreateChatCompletion(ctx context.Context, input Input) (*Result, error) {
 	input.Operation = audit.OperationChat
+	applyTUICompactionQualitySkip(&input)
 	return s.createResponseAt(ctx, input, "/responses")
 }
 
