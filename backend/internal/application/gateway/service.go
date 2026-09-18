@@ -532,6 +532,7 @@ func (s *Service) CreateChatCompletion(ctx context.Context, input Input) (*Resul
 // CreateMessage executes an Anthropic Messages request through the unified Responses upstream.
 func (s *Service) CreateMessage(ctx context.Context, input Input) (*Result, error) {
 	input.Operation = audit.OperationMessages
+	applyTUICompactionQualitySkip(&input)
 	return s.createResponseAt(ctx, input, "/responses")
 }
 

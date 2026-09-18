@@ -3,12 +3,20 @@ package gateway
 import (
 	"encoding/json"
 	"strings"
+
+	"github.com/chenyme/grok2api/backend/internal/domain/audit"
 )
 
 // Distinctive line from grok-build full_replace_summary_prompt.txt and the
 // Grok TUI compaction request. Codex remote-v2 uses compaction_trigger
 // instead; the TUI appends this prompt as a normal last user item.
 const clientCompactionPromptMarker = "it is a system-generated compaction prompt, not a real user message"
+
+// Claude Code /compact and auto-compact last-user prompt. Both fragments
+// must match so a normal coding turn that quotes one sentence is not
+// classified as compaction.
+const claudeCodeCompactionPromptMarker = "Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions."
+const claudeCodeCompactionAnalysisMarker = "wrap your analysis in <analysis> tags"
 
 type responsesCompactionKind uint8
 
@@ -74,7 +82,11 @@ func lastItemLooksLikeCompactionPrompt(items []json.RawMessage) bool {
 }
 
 func looksLikeCompactionPrompt(text string) bool {
-	return strings.Contains(text, clientCompactionPromptMarker)
+	if strings.Contains(text, clientCompactionPromptMarker) {
+		return true
+	}
+	return strings.Contains(text, claudeCodeCompactionPromptMarker) &&
+		strings.Contains(text, claudeCodeCompactionAnalysisMarker)
 }
 
 func extractContentText(raw json.RawMessage) string {
@@ -96,4 +108,14 @@ func extractContentText(raw json.RawMessage) string {
 		return builder.String()
 	}
 	return ""
+}
+
+func applyTUICompactionQualitySkip(input *Input) {
+	if input == nil {
+		return
+	}
+	if classifyResponsesCompactionRequest(input.Body) == responsesCompactionTUI {
+		input.auditOperation = audit.OperationCompaction
+		input.skipQualityHold = true
+	}
 }
