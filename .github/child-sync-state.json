@@ -105,5 +105,10 @@
       "reason": "documentation only for fake-enc and Codex MCP behavior"
     }
   ],
-  "pending": []
+  "pending": [
+    {
+      "commit": "253e593844159060699a3a89d3fec6f600758bde",
+      "reason": "the change includes sensitive paths, deletions, or exceeds the automatic review size (files: README.md,README.zh-CN.md VERSION,backend/internal/domain/audit/pricing.go backend/internal/domain/audit/pricing_test.go,backend/internal/domain/model/reasoning.go backend/internal/domain/model/reasoning_test.go,backend/internal/infra/provider/cli/adapter.go backend/internal/infra/provider/cli/adapter_test.go,backend/internal/infra/provider/cli/normalize_test.go backend/internal/infra/provider/console/catalog.go,backend/internal/infra/provider/console/console_test.go backend/internal/transport/http/inference/codex_models.go,backend/internal/transport/http/inference/model_list_test.go docker-compose.yml,frontend/src/shared/i18n/index.ts)"
+    }
+  ]
 }
