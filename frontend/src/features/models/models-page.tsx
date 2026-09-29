@@ -23,6 +23,7 @@ import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHea
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { createModel, deleteModel, deleteModels, listModelAccountOptions, listModelGroups, syncModels, updateModel, updateModelsEnabled } from "@/entities/model/model-api";
 import type { ModelEndpointCapability, ModelRouteDTO, ModelRouteGroupDTO } from "@/entities/model/types";
+import { MAX_BOUND_ACCOUNTS, mergeVisibleBoundAccountSelection, visibleBoundAccountsFullySelected } from "@/features/models/bind-accounts";
 import { EmptyState, ErrorState, TableLoadingRow } from "@/shared/components/data-state";
 import { DataTableShell } from "@/shared/components/data-table-shell";
 import { DataTableFilters } from "@/shared/components/data-table-filters";
@@ -58,7 +59,7 @@ export function ModelsPage() {
     capability: z.enum(["responses", "chat", "image", "image_edit", "video", "tts", "stt", "realtime"]),
     enabled: z.boolean(),
     bindingMode: z.boolean(),
-    accountIds: z.array(z.string()),
+    accountIds: z.array(z.string()).max(MAX_BOUND_ACCOUNTS, t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS })),
   }).refine((value) => !value.bindingMode || value.accountIds.length > 0, { path: ["accountIds"], message: t("models.selectAccountRequired") });
   type ModelForm = z.infer<typeof schema>;
   const form = useForm<ModelForm>({
@@ -69,7 +70,7 @@ export function ModelsPage() {
   const selectedProvider = useWatch({ control: form.control, name: "provider" });
   const selectedCapability = useWatch({ control: form.control, name: "capability" });
   const bindingMode = useWatch({ control: form.control, name: "bindingMode" });
-  const selectedAccountIDs = useWatch({ control: form.control, name: "accountIds" });
+  const selectedAccountIDs = useWatch({ control: form.control, name: "accountIds" }) ?? [];
 
   const modelsQuery = useQuery({
     queryKey: ["models", "grouped", page, pageSize, debouncedSearch, statusFilter, providerFilter, sort.field, sort.order],
@@ -180,7 +181,18 @@ export function ModelsPage() {
 
   function toggleBoundAccount(id: string, checked: boolean): void {
     const current = form.getValues("accountIds");
-    form.setValue("accountIds", checked ? [...new Set([...current, id])] : current.filter((value) => value !== id), { shouldValidate: true });
+    if (!checked) {
+      form.setValue("accountIds", current.filter((value) => value !== id), { shouldValidate: true });
+      return;
+    }
+    if (current.includes(id)) {
+      return;
+    }
+    if (current.length >= MAX_BOUND_ACCOUNTS) {
+      toast(t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS }));
+      return;
+    }
+    form.setValue("accountIds", [...current, id], { shouldValidate: true });
   }
 
   const accountOptions = accountOptionsQuery.data?.items ?? [];
@@ -188,6 +200,24 @@ export function ModelsPage() {
   const visibleAccountOptions = normalizedAccountSearch
     ? accountOptions.filter((account) => account.name.toLocaleLowerCase().includes(normalizedAccountSearch) || account.id.includes(normalizedAccountSearch))
     : accountOptions;
+  const visibleAccountIDs = visibleAccountOptions.map((account) => account.id);
+  const selectedAccountIDSet = new Set(selectedAccountIDs);
+  const visibleAccountsFullySelected = visibleBoundAccountsFullySelected(selectedAccountIDs, visibleAccountIDs);
+  const selectAllWouldAdd = selectedAccountIDs.length < MAX_BOUND_ACCOUNTS && visibleAccountIDs.some((id) => !selectedAccountIDSet.has(id));
+
+  function toggleVisibleBoundAccounts(): void {
+    const current = form.getValues("accountIds");
+    const selectVisible = !visibleBoundAccountsFullySelected(current, visibleAccountIDs);
+    const next = mergeVisibleBoundAccountSelection(current, visibleAccountIDs, selectVisible);
+    form.setValue("accountIds", next, { shouldValidate: true });
+    if (!selectVisible) {
+      return;
+    }
+    const selected = new Set(next);
+    if (next.length >= MAX_BOUND_ACCOUNTS && visibleAccountIDs.some((id) => !selected.has(id))) {
+      toast(t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS }));
+    }
+  }
 
   const result = useMemo(() => modelsQuery.data ? { ...modelsQuery.data, items: modelsQuery.data.items.map((group) => newModelRouteGroup(group, t)) } : undefined, [modelsQuery.data, t]);
   const pageIDs = result?.items.flatMap((group) => group.routes.map((route) => route.id)) ?? [];
@@ -380,17 +410,24 @@ export function ModelsPage() {
                 {bindingMode ? (
                   <div className="mt-3">
                     <div className="overflow-hidden rounded-md bg-background/55 p-1">
-                      <div className="relative">
-                        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                        <Input className="bg-transparent pl-8 shadow-none focus-visible:bg-background/70" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} placeholder={t("models.searchAccounts")} />
+                      <div className="flex items-center gap-1">
+                        <div className="relative min-w-0 flex-1">
+                          <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                          <Input className="bg-transparent pl-8 shadow-none focus-visible:bg-background/70" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder={t("models.searchAccounts")} aria-label={t("models.searchAccounts")} />
+                        </div>
+                        {visibleAccountOptions.length > 0 ? (
+                          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" aria-pressed={visibleAccountsFullySelected} aria-controls="model-bound-account-list" disabled={!visibleAccountsFullySelected && !selectAllWouldAdd} onClick={toggleVisibleBoundAccounts}>
+                            {visibleAccountsFullySelected ? t("models.clearVisibleAccounts") : t("models.selectAllVisibleAccounts")}
+                          </Button>
+                        ) : null}
                       </div>
-                      <div className="mt-1 max-h-40 overflow-y-auto overscroll-contain sm:max-h-44">
+                      <div id="model-bound-account-list" role="group" aria-label={t("models.boundAccounts")} className="mt-1 max-h-40 overflow-y-auto overscroll-contain sm:max-h-44">
                         {accountOptionsQuery.isPending ? <div className="flex min-h-20 items-center justify-center"><Spinner /></div> : null}
                         {accountOptionsQuery.isError ? <p className="p-3 text-center text-xs text-destructive">{accountOptionsQuery.error.message}</p> : null}
                         {!accountOptionsQuery.isPending && visibleAccountOptions.length === 0 ? <p className="p-3 text-center text-xs text-muted-foreground">{t("models.noBindableAccounts")}</p> : null}
                         {visibleAccountOptions.map((account) => {
                           const controlId = `model-account-${account.id}`;
-                          const checked = selectedAccountIDs.includes(account.id);
+                          const checked = selectedAccountIDSet.has(account.id);
                           return (
                             <label key={account.id} htmlFor={controlId} className={cn("flex h-8 cursor-pointer items-center gap-2.5 rounded-md px-2 text-xs transition-colors hover:bg-accent/40", checked && "bg-accent/55")}>
                               <Checkbox id={controlId} checked={checked} onCheckedChange={(value) => toggleBoundAccount(account.id, value === true)} />
@@ -401,7 +438,8 @@ export function ModelsPage() {
                         })}
                       </div>
                     </div>
-                    {form.formState.errors.accountIds ? <p className="mt-2 text-xs text-destructive">{form.formState.errors.accountIds.message}</p> : null}
+                    {accountOptions.length >= MAX_BOUND_ACCOUNTS ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS })}</p> : null}
+                    {form.formState.errors.accountIds ? <p className="mt-2 text-xs text-destructive" role="alert">{form.formState.errors.accountIds.message}</p> : null}
                   </div>
                 ) : null}
               </section>
