@@ -110,6 +110,26 @@ type PublicProxyProfile struct {
 	UpdatedAt        time.Time
 }
 
+type BuildOAuthProxy struct {
+	ID                uint64
+	Name              string
+	EncryptedProxyURL string
+	Enabled           bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
+type PublicBuildOAuthProxy struct {
+	ID                uint64
+	Name              string
+	Enabled           bool
+	ProxyDisplay      string
+	ProxyFingerprint  string
+	AccountBoundProxy bool
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
+}
+
 type ProbeStatus string
 
 const (

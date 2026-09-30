@@ -106,6 +106,15 @@ func (a *Adapter) SetEgress(manager *infraegress.Manager) {
 	}
 }
 
+func (a *Adapter) SetOAuthPool(pool *infraegress.OAuthPool) {
+	if pool == nil {
+		return
+	}
+	if transport, ok := a.http.Transport.(*egressTransport); ok {
+		transport.oauthPool = pool
+	}
+}
+
 // SetReasoningReplay injects the optional server-side reasoning replay cache.
 func (a *Adapter) SetReasoningReplay(replay *reasoningreplay.ReasoningReplay) {
 	a.replay = replay

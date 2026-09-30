@@ -18,19 +18,21 @@ import (
 )
 
 var (
-	ErrInvalidInput            = errors.New("代理节点参数无效")
-	ErrInvalidFilter           = errors.New("出口代理筛选条件无效")
-	ErrInvalidSort             = errors.New("代理节点排序条件无效")
-	ErrNotFound                = errors.New("代理节点不存在")
-	ErrProbeStale              = errors.New("代理配置在探测期间已更新，请重新测试")
-	ErrQualityProbeUnavailable = errors.New("出口质量探测不可用")
-	ErrQualityProbeNoAccount   = errors.New("质量检测暂无可调度账号")
-	ErrQualityLeaseUnavailable = errors.New("租约级质量隔离不可用")
-	ErrQualityLeaseConflict    = errors.New("租约状态已变化")
-	ErrClearanceUnavailable    = errors.New("Clearance 刷新不可用")
-	ErrProxyProfileUnavailable = errors.New("共享代理配置功能不可用")
-	ErrProxyProfileInUse       = errors.New("共享代理配置仍被节点使用")
-	ErrProxyProfileNotFound    = errors.New("共享代理配置不存在")
+	ErrInvalidInput               = errors.New("代理节点参数无效")
+	ErrInvalidFilter              = errors.New("出口代理筛选条件无效")
+	ErrInvalidSort                = errors.New("代理节点排序条件无效")
+	ErrNotFound                   = errors.New("代理节点不存在")
+	ErrProbeStale                 = errors.New("代理配置在探测期间已更新，请重新测试")
+	ErrQualityProbeUnavailable    = errors.New("出口质量探测不可用")
+	ErrQualityProbeNoAccount      = errors.New("质量检测暂无可调度账号")
+	ErrQualityLeaseUnavailable    = errors.New("租约级质量隔离不可用")
+	ErrQualityLeaseConflict       = errors.New("租约状态已变化")
+	ErrClearanceUnavailable       = errors.New("Clearance 刷新不可用")
+	ErrProxyProfileUnavailable    = errors.New("共享代理配置功能不可用")
+	ErrProxyProfileInUse          = errors.New("共享代理配置仍被节点使用")
+	ErrProxyProfileNotFound       = errors.New("共享代理配置不存在")
+	ErrBuildOAuthProxyUnavailable = errors.New("Build OAuth 代理名单不可用")
+	ErrBuildOAuthProxyNotFound    = errors.New("Build OAuth 代理不存在")
 )
 
 const (
@@ -118,6 +120,7 @@ type ServiceRepository interface {
 type Service struct {
 	repository                  ServiceRepository
 	proxyProfiles               repository.EgressProxyProfileRepository
+	oauthProxies                repository.BuildOAuthProxyRepository
 	accounts                    AccountBindingRepository
 	qualityLeases               QualityLeaseRepository
 	operations                  OperationsRepository
@@ -267,6 +270,9 @@ func NewService(storage ServiceRepository, cipher *security.Cipher, browserUA st
 	service := &Service{repository: storage, cipher: cipher, browserUA: strings.TrimSpace(browserUA)}
 	if profiles, ok := storage.(repository.EgressProxyProfileRepository); ok {
 		service.proxyProfiles = profiles
+	}
+	if oauth, ok := storage.(repository.BuildOAuthProxyRepository); ok {
+		service.oauthProxies = oauth
 	}
 	if operations, ok := storage.(OperationsRepository); ok {
 		service.operations = operations

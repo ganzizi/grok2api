@@ -2374,6 +2374,52 @@ Object.assign(resources.en.translation.settings.web as unknown as Record<string,
   clearanceModeHelp: "Maintain Clearance manually, refresh it proactively with FlareSolverr, or solve on demand only after an explicit upstream rejection.",
   clearanceOnDemand: "On demand",
 });
+Object.assign(resources["zh-CN"].translation as unknown as Record<string, unknown>, {
+  buildOAuthProxies: {
+    title: "Build OAuth 出口",
+    description: "仅用于 auth.x.ai 换票。未配置时换票仍走 Build 出口；已配置失败不会回落到免费池。",
+    add: "新增 OAuth 代理",
+    addTitle: "新增 OAuth 代理",
+    editTitle: "编辑 OAuth 代理",
+    dialogDescription: "填写能对 auth.x.ai 做 CONNECT 的代理。用户名可用 {account} 做粘性。",
+    name: "名称",
+    endpoint: "代理地址",
+    enabled: "启用",
+    empty: "尚未配置 OAuth 代理，换票仍走 Build 出口。",
+    saved: "OAuth 代理已保存",
+    deleted: "OAuth 代理已删除",
+    deleteTitle: "删除 OAuth 代理？",
+    deleteDescription: "将删除“{{name}}”。删除后若名单为空，换票会回到 Build 出口。",
+    accountBound: "账号粘性 {account}",
+    reveal: "显示完整代理地址",
+    hide: "隐藏完整代理地址",
+    revealUnavailable: "只能查看已保存代理的完整地址",
+    proxyHelp: "建议 socks5h://US.{account}:TOKEN@resin-host:2260，不要用 Default 平台。",
+  },
+});
+Object.assign(resources.en.translation as unknown as Record<string, unknown>, {
+  buildOAuthProxies: {
+    title: "Build OAuth egress",
+    description: "Used only for auth.x.ai token refresh. If unset, refresh keeps using the Build pool. A configured failure does not fall back to the free pool.",
+    add: "Add OAuth proxy",
+    addTitle: "Add OAuth proxy",
+    editTitle: "Edit OAuth proxy",
+    dialogDescription: "Enter a CONNECT-capable proxy for auth.x.ai. {account} in the username enables sticky routing.",
+    name: "Name",
+    endpoint: "Proxy",
+    enabled: "Enabled",
+    empty: "No OAuth proxies configured. Token refresh still uses the Build pool.",
+    saved: "OAuth proxy saved",
+    deleted: "OAuth proxy deleted",
+    deleteTitle: "Delete this OAuth proxy?",
+    deleteDescription: "This deletes “{{name}}”. If the list becomes empty, token refresh returns to the Build pool.",
+    accountBound: "Sticky {account}",
+    reveal: "Show full proxy URL",
+    hide: "Hide full proxy URL",
+    revealUnavailable: "The full URL is only available for a saved proxy",
+    proxyHelp: "Prefer socks5h://US.{account}:TOKEN@resin-host:2260. Do not use the Default platform.",
+  },
+});
 function readStoredLanguage(): string | null {
   if (typeof window === "undefined") return null;
   try {

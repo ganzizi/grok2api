@@ -69,6 +69,14 @@ export type EgressProxyProfileListDTO = {
 	total: number;
 };
 
+export type BuildOAuthProxyDTO = {
+	id: string; name: string; enabled: boolean;
+	proxyDisplay?: string; proxyFingerprint?: string;
+	accountBoundProxy: boolean; createdAt: string; updatedAt: string;
+};
+export type BuildOAuthProxyInput = { name: string; proxyURL?: string; enabled?: boolean };
+export type BuildOAuthProxyListDTO = { items: BuildOAuthProxyDTO[] };
+
 export type EgressScope = "grok_build" | "grok_web" | "grok_console" | "grok_web_asset" | "grok_console_asset";
 export type EgressFallbackMode = "none" | "direct" | "fixed";
 export type EgressFallbackConfigDTO = { mode: EgressFallbackMode; nodeId?: string };
@@ -251,6 +259,14 @@ const decodeEgressProxyProfiles = createObjectDecoder<EgressProxyProfileListDTO>
   id: isString, name: isString, proxyDisplay: isOptional(isString), proxyFingerprint: isOptional(isString),
   boundNodeCount: isNumber, createdAt: isString, updatedAt: isString,
 })), page: isNumber, pageSize: isNumber, total: isNumber });
+const decodeBuildOAuthProxy = createObjectDecoder<BuildOAuthProxyDTO>("build oauth proxy", {
+  id: isString, name: isString, enabled: isBoolean, proxyDisplay: isOptional(isString), proxyFingerprint: isOptional(isString),
+  accountBoundProxy: isBoolean, createdAt: isString, updatedAt: isString,
+});
+const decodeBuildOAuthProxies = createObjectDecoder<BuildOAuthProxyListDTO>("build oauth proxies", { items: isArrayOf(hasShape({
+  id: isString, name: isString, enabled: isBoolean, proxyDisplay: isOptional(isString), proxyFingerprint: isOptional(isString),
+  accountBoundProxy: isBoolean, createdAt: isString, updatedAt: isString,
+})) });
 type EgressNodeListWireDTO = {
   items: EgressNodeWireDTO[];
   page?: number;
@@ -414,6 +430,26 @@ export function deleteEgressProxyProfile(id: string): Promise<{ deleted: boolean
 
 export function getEgressProxyProfileURL(id: string): Promise<{ proxyURL: string }> {
   return apiRequest(`/api/admin/v1/egress-proxy-profiles/${id}/proxy-url/reveal`, { method: "POST" }, createObjectDecoder<{ proxyURL: string }>("egress proxy profile URL", { proxyURL: isString }));
+}
+
+export function listBuildOAuthProxies(): Promise<BuildOAuthProxyListDTO> {
+  return apiRequest("/api/admin/v1/egress-build-oauth-proxies", {}, decodeBuildOAuthProxies);
+}
+
+export function createBuildOAuthProxy(input: BuildOAuthProxyInput): Promise<BuildOAuthProxyDTO> {
+  return apiRequest("/api/admin/v1/egress-build-oauth-proxies", { method: "POST", body: input }, decodeBuildOAuthProxy);
+}
+
+export function updateBuildOAuthProxy(id: string, input: BuildOAuthProxyInput): Promise<BuildOAuthProxyDTO> {
+  return apiRequest(`/api/admin/v1/egress-build-oauth-proxies/${id}`, { method: "PUT", body: input }, decodeBuildOAuthProxy);
+}
+
+export function deleteBuildOAuthProxy(id: string): Promise<{ deleted: boolean }> {
+  return apiRequest(`/api/admin/v1/egress-build-oauth-proxies/${id}`, { method: "DELETE" }, decodeBooleanResult<{ deleted: boolean }>("deleted"));
+}
+
+export function getBuildOAuthProxyURL(id: string): Promise<{ proxyURL: string }> {
+  return apiRequest(`/api/admin/v1/egress-build-oauth-proxies/${id}/proxy-url/reveal`, { method: "POST" }, createObjectDecoder<{ proxyURL: string }>("build oauth proxy URL", { proxyURL: isString }));
 }
 
 export function deleteEgressNode(id: string): Promise<{ deleted: boolean }> {

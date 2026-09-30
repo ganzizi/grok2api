@@ -521,6 +521,17 @@ type egressProxyProfileModel struct {
 
 func (egressProxyProfileModel) TableName() string { return "egress_proxy_profiles" }
 
+type buildOAuthProxyModel struct {
+	ID                uint64    `gorm:"primaryKey;autoIncrement"`
+	Name              string    `gorm:"size:160;not null;uniqueIndex;check:chk_build_oauth_proxies_name,length(trim(name)) BETWEEN 1 AND 160"`
+	EncryptedProxyURL string    `gorm:"type:text;not null;check:chk_build_oauth_proxies_url,length(encrypted_proxy_url) BETWEEN 1 AND 65536"`
+	Enabled           bool      `gorm:"not null;default:true"`
+	CreatedAt         time.Time `gorm:"not null"`
+	UpdatedAt         time.Time `gorm:"not null"`
+}
+
+func (buildOAuthProxyModel) TableName() string { return "build_oauth_proxies" }
+
 type egressNodeModel struct {
 	ID                          uint64  `gorm:"primaryKey;autoIncrement"`
 	Name                        string  `gorm:"size:160;not null;check:chk_egress_nodes_name,length(trim(name)) BETWEEN 1 AND 160"`

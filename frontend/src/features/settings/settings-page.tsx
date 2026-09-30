@@ -14,6 +14,7 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
 import { EgressNodes } from "@/features/settings/egress-nodes";
+import { BuildOAuthProxies } from "@/features/settings/build-oauth-proxies";
 import { VersionUpdateSection } from "@/features/system/version-update";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { isByteSizeUnit, isDurationUnit, MAX_ROUTING_ATTEMPTS, type ByteSizeValue, type DurationValue, UNLIMITED_ROUTING_ATTEMPTS } from "@/features/settings/settings-model";
@@ -116,6 +117,7 @@ export function SettingsPage() {
               <SettingsField controlId="provider-stream-idle-timeout" label={t("settingsBuildTransport.streamIdleTimeout")} description={t("settingsBuildTransport.streamIdleTimeoutHelp")} error={form.formState.errors.providerBuild?.streamIdleTimeout?.message}><Controller control={form.control} name="providerBuild.streamIdleTimeout" render={({ field }) => <DurationInput id="provider-stream-idle-timeout" value={field.value} onChange={field.onChange} />} /></SettingsField>
             </div>
           </SettingsSection>
+          <BuildOAuthProxies />
           </SettingsPane>
 
           <SettingsPane value="web">

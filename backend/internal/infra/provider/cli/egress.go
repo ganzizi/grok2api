@@ -12,12 +12,25 @@ import (
 	infraegress "github.com/chenyme/grok2api/backend/internal/infra/egress"
 )
 
+type oauthRoundTripper interface {
+	Enabled() bool
+	RoundTrip(*http.Request) (*http.Response, error)
+}
+
 type egressTransport struct {
-	manager  *infraegress.Manager
-	fallback http.RoundTripper
+	manager   *infraegress.Manager
+	oauthPool oauthRoundTripper
+	fallback  http.RoundTripper
+}
+
+func useBuildOAuthPool(pool oauthRoundTripper, host string) bool {
+	return pool != nil && domainegress.IsBuildOAuthHost(host) && pool.Enabled()
 }
 
 func (t *egressTransport) RoundTrip(request *http.Request) (*http.Response, error) {
+	if request != nil && useBuildOAuthPool(t.oauthPool, request.URL.Host) {
+		return t.oauthPool.RoundTrip(request)
+	}
 	affinity := infraegress.AccountFromContext(request.Context())
 	if affinity == "" {
 		affinity = "bootstrap"

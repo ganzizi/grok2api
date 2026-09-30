@@ -63,3 +63,11 @@ type EgressSourceListQuery struct {
 	Page   PageQuery
 	Filter EgressSourceListFilter
 }
+
+type BuildOAuthProxyRepository interface {
+	ListBuildOAuthProxies(context.Context) ([]egress.BuildOAuthProxy, error)
+	GetBuildOAuthProxy(context.Context, uint64) (egress.BuildOAuthProxy, error)
+	CreateBuildOAuthProxy(context.Context, egress.BuildOAuthProxy) (egress.BuildOAuthProxy, error)
+	UpdateBuildOAuthProxy(context.Context, egress.BuildOAuthProxy) (egress.BuildOAuthProxy, error)
+	DeleteBuildOAuthProxy(context.Context, uint64) error
+}

@@ -59,6 +59,11 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.PUT("/egress-proxy-profiles/:id", h.updateProxyProfile)
 	router.DELETE("/egress-proxy-profiles/:id", h.deleteProxyProfile)
 	router.POST("/egress-proxy-profiles/:id/proxy-url/reveal", h.proxyProfileURL)
+	router.GET("/egress-build-oauth-proxies", h.listBuildOAuthProxies)
+	router.POST("/egress-build-oauth-proxies", h.createBuildOAuthProxy)
+	router.PUT("/egress-build-oauth-proxies/:id", h.updateBuildOAuthProxy)
+	router.DELETE("/egress-build-oauth-proxies/:id", h.deleteBuildOAuthProxy)
+	router.POST("/egress-build-oauth-proxies/:id/proxy-url/reveal", h.buildOAuthProxyURL)
 	router.GET("/egress-nodes", h.list)
 	router.POST("/egress-nodes", h.create)
 	router.PATCH("/egress-nodes/batch", h.updateMany)
@@ -1094,6 +1099,103 @@ func (h *Handler) proxyProfileURL(c *gin.Context) {
 	response.Success(c, http.StatusOK, gin.H{"proxyURL": value})
 }
 
+type buildOAuthProxyRequest struct {
+	Name     string  `json:"name"`
+	ProxyURL *string `json:"proxyURL"`
+	Enabled  *bool   `json:"enabled"`
+}
+
+type buildOAuthProxyResponse struct {
+	ID                uint64    `json:"id,string"`
+	Name              string    `json:"name"`
+	Enabled           bool      `json:"enabled"`
+	ProxyDisplay      string    `json:"proxyDisplay,omitempty"`
+	ProxyFingerprint  string    `json:"proxyFingerprint,omitempty"`
+	AccountBoundProxy bool      `json:"accountBoundProxy"`
+	CreatedAt         time.Time `json:"createdAt"`
+	UpdatedAt         time.Time `json:"updatedAt"`
+}
+
+func newBuildOAuthProxyResponse(value egressdomain.PublicBuildOAuthProxy) buildOAuthProxyResponse {
+	return buildOAuthProxyResponse{
+		ID: value.ID, Name: value.Name, Enabled: value.Enabled,
+		ProxyDisplay: value.ProxyDisplay, ProxyFingerprint: value.ProxyFingerprint,
+		AccountBoundProxy: value.AccountBoundProxy, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+	}
+}
+
+func (h *Handler) listBuildOAuthProxies(c *gin.Context) {
+	values, err := h.service.ListBuildOAuthProxies(c.Request.Context())
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	items := make([]buildOAuthProxyResponse, 0, len(values))
+	for _, value := range values {
+		items = append(items, newBuildOAuthProxyResponse(value))
+	}
+	response.Success(c, http.StatusOK, gin.H{"items": items})
+}
+
+func (h *Handler) createBuildOAuthProxy(c *gin.Context) {
+	var request buildOAuthProxyRequest
+	if c.ShouldBindJSON(&request) != nil {
+		response.Error(c, http.StatusBadRequest, "invalidRequest", "请求参数无效")
+		return
+	}
+	value, err := h.service.CreateBuildOAuthProxy(c.Request.Context(), egressapp.BuildOAuthProxyInput{Name: request.Name, ProxyURL: request.ProxyURL, Enabled: request.Enabled})
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusCreated, newBuildOAuthProxyResponse(value))
+}
+
+func (h *Handler) updateBuildOAuthProxy(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	var request buildOAuthProxyRequest
+	if c.ShouldBindJSON(&request) != nil {
+		response.Error(c, http.StatusBadRequest, "invalidRequest", "请求参数无效")
+		return
+	}
+	value, err := h.service.UpdateBuildOAuthProxy(c.Request.Context(), id, egressapp.BuildOAuthProxyInput{Name: request.Name, ProxyURL: request.ProxyURL, Enabled: request.Enabled})
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, newBuildOAuthProxyResponse(value))
+}
+
+func (h *Handler) deleteBuildOAuthProxy(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	if err := h.service.DeleteBuildOAuthProxy(c.Request.Context(), id); err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h *Handler) buildOAuthProxyURL(c *gin.Context) {
+	c.Header("Cache-Control", "private, no-store")
+	c.Header("Pragma", "no-cache")
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	value, err := h.service.BuildOAuthProxyURL(c.Request.Context(), id)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, gin.H{"proxyURL": value})
+}
+
 func newProxyProfileResponse(value egressdomain.PublicProxyProfile) proxyProfileResponse {
 	return proxyProfileResponse{
 		ID: value.ID, Name: value.Name, ProxyDisplay: value.ProxyDisplay, ProxyFingerprint: value.ProxyFingerprint,
@@ -1537,6 +1639,10 @@ func (h *Handler) writeError(c *gin.Context, err error) {
 		response.Error(c, http.StatusConflict, "egressProxyProfileInUse", err.Error())
 	case errors.Is(err, egressapp.ErrProxyProfileUnavailable):
 		response.Error(c, http.StatusServiceUnavailable, "egressProxyProfilesUnavailable", err.Error())
+	case errors.Is(err, egressapp.ErrBuildOAuthProxyNotFound):
+		response.Error(c, http.StatusNotFound, "buildOAuthProxyNotFound", err.Error())
+	case errors.Is(err, egressapp.ErrBuildOAuthProxyUnavailable):
+		response.Error(c, http.StatusServiceUnavailable, "buildOAuthProxiesUnavailable", err.Error())
 	case errors.Is(err, egressapp.ErrProbeStale):
 		response.Error(c, http.StatusConflict, "egressProbeStale", err.Error())
 	case errors.Is(err, repository.ErrConflict):

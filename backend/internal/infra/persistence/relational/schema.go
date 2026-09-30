@@ -28,6 +28,7 @@ var schemaModels = []any{
 	&egressProxyProfileModel{},
 	&egressNodeModel{},
 	&egressOperationsConfigModel{},
+	&buildOAuthProxyModel{},
 	&accountModel{},
 	&accountCredentialModel{},
 	&accountProviderLinkModel{},

@@ -216,6 +216,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	}, cipher)
 	cliAdapter.SetLogger(logger)
 	cliAdapter.SetEgress(egressManager)
+	cliAdapter.SetOAuthPool(infraegress.NewOAuthPool(egressRepo, cipher))
 	cliAdapter.SetVideoUploadIssuer(mediaService)
 	reasoningReplay := reasoningreplay.New(reasoningReplayStore, reasoningreplay.Config{
 		Enabled: cfg.Routing.ReasoningReplayEnabled,
