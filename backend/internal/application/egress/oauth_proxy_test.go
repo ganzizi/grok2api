@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	domain "github.com/chenyme/grok2api/backend/internal/domain/egress"
 	"github.com/chenyme/grok2api/backend/internal/infra/security"
@@ -141,5 +142,62 @@ func TestBuildOAuthProxyCRUDHidesPlaintext(t *testing.T) {
 	}
 	if _, err := service.BuildOAuthProxyURL(ctx, created.ID); !errors.Is(err, ErrBuildOAuthProxyNotFound) {
 		t.Fatalf("deleted reveal error = %v", err)
+	}
+}
+
+func TestTestBuildOAuthProxyURLRejectsEmpty(t *testing.T) {
+	service := &Service{cipher: testBuildOAuthCipher(t), oauthProxies: &memoryBuildOAuthProxyRepository{}}
+	if _, err := service.TestBuildOAuthProxyURL(context.Background(), "  "); !errors.Is(err, ErrInvalidInput) {
+		t.Fatalf("empty url error = %v", err)
+	}
+}
+
+func TestTestBuildOAuthProxyRequiresProber(t *testing.T) {
+	cipher := testBuildOAuthCipher(t)
+	service := &Service{cipher: cipher, oauthProxies: &memoryBuildOAuthProxyRepository{}}
+	proxyURL := "socks5h://US.{account}:token@127.0.0.1:2260"
+	created, err := service.CreateBuildOAuthProxy(context.Background(), BuildOAuthProxyInput{Name: "paid-us", ProxyURL: &proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := service.TestBuildOAuthProxy(context.Background(), created.ID); !errors.Is(err, ErrBuildOAuthProxyUnavailable) {
+		t.Fatalf("missing prober error = %v", err)
+	}
+	listed, err := service.ListBuildOAuthProxies(context.Background())
+	if err != nil || len(listed) != 1 || listed[0].ProbeStatus != domain.ProbeStatusUnknown {
+		t.Fatalf("probe must not persist without a prober: %+v, err = %v", listed, err)
+	}
+}
+
+func TestTestBuildOAuthProxyPersistsResult(t *testing.T) {
+	cipher := testBuildOAuthCipher(t)
+	repo := &memoryBuildOAuthProxyRepository{}
+	service := &Service{cipher: cipher, oauthProxies: repo}
+	var seen string
+	service.SetBuildOAuthProber(func(_ context.Context, proxyURL string) domain.BuildOAuthProbeResult {
+		seen = proxyURL
+		return domain.BuildOAuthProbeResult{
+			Status: domain.ProbeStatusHealthy, TestedAt: time.Unix(1700000000, 0).UTC(),
+			LatencyMS: 321, StatusCode: 400, Target: "auth.x.ai:443",
+		}
+	})
+	proxyURL := "socks5h://US.{account}:token@127.0.0.1:2260"
+	created, err := service.CreateBuildOAuthProxy(context.Background(), BuildOAuthProxyInput{Name: "paid-us", ProxyURL: &proxyURL})
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, err := service.TestBuildOAuthProxy(context.Background(), created.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Status != domain.ProbeStatusHealthy || result.StatusCode != 400 || result.LatencyMS != 321 {
+		t.Fatalf("result = %+v", result)
+	}
+	if !strings.Contains(seen, "US.probe") || strings.Contains(seen, "{account}") {
+		t.Fatalf("placeholder not rendered: %q", seen)
+	}
+	listed, err := service.ListBuildOAuthProxies(context.Background())
+	if err != nil || len(listed) != 1 || listed[0].ProbeStatus != domain.ProbeStatusHealthy || listed[0].ProbeLatencyMS != 321 {
+		t.Fatalf("listed = %+v, err = %v", listed, err)
 	}
 }

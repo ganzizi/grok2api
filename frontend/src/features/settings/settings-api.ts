@@ -72,7 +72,14 @@ export type EgressProxyProfileListDTO = {
 export type BuildOAuthProxyDTO = {
 	id: string; name: string; enabled: boolean;
 	proxyDisplay?: string; proxyFingerprint?: string;
-	accountBoundProxy: boolean; createdAt: string; updatedAt: string;
+	accountBoundProxy: boolean;
+	probeStatus: "unknown" | "healthy" | "unhealthy";
+	lastProbedAt?: string; probeLatencyMs: number; probeStatusCode?: number; probeError?: string;
+	createdAt: string; updatedAt: string;
+};
+export type BuildOAuthProbeResultDTO = {
+	status: "unknown" | "healthy" | "unhealthy";
+	testedAt: string; latencyMs: number; statusCode?: number; error?: string; target?: string;
 };
 export type BuildOAuthProxyInput = { name: string; proxyURL?: string; enabled?: boolean };
 export type BuildOAuthProxyListDTO = { items: BuildOAuthProxyDTO[] };
@@ -261,12 +268,20 @@ const decodeEgressProxyProfiles = createObjectDecoder<EgressProxyProfileListDTO>
 })), page: isNumber, pageSize: isNumber, total: isNumber });
 const decodeBuildOAuthProxy = createObjectDecoder<BuildOAuthProxyDTO>("build oauth proxy", {
   id: isString, name: isString, enabled: isBoolean, proxyDisplay: isOptional(isString), proxyFingerprint: isOptional(isString),
-  accountBoundProxy: isBoolean, createdAt: isString, updatedAt: isString,
+  accountBoundProxy: isBoolean, probeStatus: isOneOf("unknown", "healthy", "unhealthy"), lastProbedAt: isOptional(isString),
+  probeLatencyMs: isNumber, probeStatusCode: isOptional(isNumber), probeError: isOptional(isString),
+  createdAt: isString, updatedAt: isString,
 });
 const decodeBuildOAuthProxies = createObjectDecoder<BuildOAuthProxyListDTO>("build oauth proxies", { items: isArrayOf(hasShape({
   id: isString, name: isString, enabled: isBoolean, proxyDisplay: isOptional(isString), proxyFingerprint: isOptional(isString),
-  accountBoundProxy: isBoolean, createdAt: isString, updatedAt: isString,
+  accountBoundProxy: isBoolean, probeStatus: isOneOf("unknown", "healthy", "unhealthy"), lastProbedAt: isOptional(isString),
+  probeLatencyMs: isNumber, probeStatusCode: isOptional(isNumber), probeError: isOptional(isString),
+  createdAt: isString, updatedAt: isString,
 })) });
+const decodeBuildOAuthProbe = createObjectDecoder<BuildOAuthProbeResultDTO>("build oauth probe", {
+  status: isOneOf("unknown", "healthy", "unhealthy"), testedAt: isString, latencyMs: isNumber,
+  statusCode: isOptional(isNumber), error: isOptional(isString), target: isOptional(isString),
+});
 type EgressNodeListWireDTO = {
   items: EgressNodeWireDTO[];
   page?: number;
@@ -450,6 +465,14 @@ export function deleteBuildOAuthProxy(id: string): Promise<{ deleted: boolean }>
 
 export function getBuildOAuthProxyURL(id: string): Promise<{ proxyURL: string }> {
   return apiRequest(`/api/admin/v1/egress-build-oauth-proxies/${id}/proxy-url/reveal`, { method: "POST" }, createObjectDecoder<{ proxyURL: string }>("build oauth proxy URL", { proxyURL: isString }));
+}
+
+export function testBuildOAuthProxy(id: string): Promise<BuildOAuthProbeResultDTO> {
+  return apiRequest(`/api/admin/v1/egress-build-oauth-proxies/${id}/test`, { method: "POST" }, decodeBuildOAuthProbe);
+}
+
+export function testBuildOAuthProxyURL(proxyURL: string): Promise<BuildOAuthProbeResultDTO> {
+  return apiRequest("/api/admin/v1/egress-build-oauth-proxies/test", { method: "POST", body: { proxyURL } }, decodeBuildOAuthProbe);
 }
 
 export function deleteEgressNode(id: string): Promise<{ deleted: boolean }> {

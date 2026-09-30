@@ -138,13 +138,89 @@ func validateBuildOAuthProxyInput(input BuildOAuthProxyInput, create bool) (stri
 }
 
 func (s *Service) publicBuildOAuthProxy(value domain.BuildOAuthProxy) domain.PublicBuildOAuthProxy {
+	status := value.ProbeStatus
+	if status == "" {
+		status = domain.ProbeStatusUnknown
+	}
 	result := domain.PublicBuildOAuthProxy{
 		ID: value.ID, Name: value.Name, Enabled: value.Enabled,
-		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+		ProbeStatus: status, LastProbedAt: value.LastProbedAt,
+		ProbeLatencyMS: value.ProbeLatencyMS, ProbeStatusCode: value.ProbeStatusCode,
+		ProbeError: value.ProbeError,
+		CreatedAt:  value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 	display, fingerprint, accountBound := s.proxyMetadata(value.EncryptedProxyURL)
 	result.ProxyDisplay = display
 	result.ProxyFingerprint = fingerprint
 	result.AccountBoundProxy = accountBound
 	return result
+}
+
+func (s *Service) TestBuildOAuthProxyURL(ctx context.Context, proxyURL string) (domain.BuildOAuthProbeResult, error) {
+	normalized, err := NormalizeProxyURL(strings.TrimSpace(proxyURL))
+	if err != nil || normalized == "" {
+		if err == nil {
+			err = errors.New("代理地址不能为空")
+		}
+		return domain.BuildOAuthProbeResult{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	return s.probeBuildOAuthURL(ctx, normalized)
+}
+
+func (s *Service) TestBuildOAuthProxy(ctx context.Context, id uint64) (domain.BuildOAuthProbeResult, error) {
+	if s.oauthProxies == nil {
+		return domain.BuildOAuthProbeResult{}, ErrBuildOAuthProxyUnavailable
+	}
+	value, err := s.oauthProxies.GetBuildOAuthProxy(ctx, id)
+	if errors.Is(err, repository.ErrNotFound) {
+		return domain.BuildOAuthProbeResult{}, ErrBuildOAuthProxyNotFound
+	}
+	if err != nil {
+		return domain.BuildOAuthProbeResult{}, err
+	}
+	proxyURL, err := s.cipher.Decrypt(value.EncryptedProxyURL)
+	if err != nil {
+		return domain.BuildOAuthProbeResult{}, err
+	}
+	proxyURL, err = NormalizeProxyURL(proxyURL)
+	if err != nil || proxyURL == "" {
+		if err == nil {
+			err = errors.New("代理地址不能为空")
+		}
+		return domain.BuildOAuthProbeResult{}, fmt.Errorf("%w: %v", ErrInvalidInput, err)
+	}
+	result, err := s.probeBuildOAuthURL(ctx, proxyURL)
+	if err != nil {
+		return result, err
+	}
+	testedAt := result.TestedAt
+	value.ProbeStatus = result.Status
+	value.LastProbedAt = &testedAt
+	value.ProbeLatencyMS = result.LatencyMS
+	value.ProbeStatusCode = result.StatusCode
+	value.ProbeError = truncateProbeError(result.Error)
+	if _, err := s.oauthProxies.UpdateBuildOAuthProxy(ctx, value); err != nil {
+		if errors.Is(err, repository.ErrNotFound) {
+			return result, ErrBuildOAuthProxyNotFound
+		}
+		return result, err
+	}
+	return result, nil
+}
+
+func (s *Service) probeBuildOAuthURL(ctx context.Context, proxyURL string) (domain.BuildOAuthProbeResult, error) {
+	s.mu.RLock()
+	prober := s.oauthProber
+	s.mu.RUnlock()
+	if prober == nil {
+		return domain.BuildOAuthProbeResult{}, ErrBuildOAuthProxyUnavailable
+	}
+	return prober(ctx, strings.ReplaceAll(proxyURL, ProxyAccountPlaceholder, "probe")), nil
+}
+
+func truncateProbeError(value string) string {
+	if len(value) <= 512 {
+		return value
+	}
+	return value[:512]
 }

@@ -63,6 +63,8 @@ func (h *Handler) Register(router *gin.RouterGroup) {
 	router.POST("/egress-build-oauth-proxies", h.createBuildOAuthProxy)
 	router.PUT("/egress-build-oauth-proxies/:id", h.updateBuildOAuthProxy)
 	router.DELETE("/egress-build-oauth-proxies/:id", h.deleteBuildOAuthProxy)
+	router.POST("/egress-build-oauth-proxies/test", h.testBuildOAuthProxyURL)
+	router.POST("/egress-build-oauth-proxies/:id/test", h.testBuildOAuthProxy)
 	router.POST("/egress-build-oauth-proxies/:id/proxy-url/reveal", h.buildOAuthProxyURL)
 	router.GET("/egress-nodes", h.list)
 	router.POST("/egress-nodes", h.create)
@@ -1106,22 +1108,72 @@ type buildOAuthProxyRequest struct {
 }
 
 type buildOAuthProxyResponse struct {
-	ID                uint64    `json:"id,string"`
-	Name              string    `json:"name"`
-	Enabled           bool      `json:"enabled"`
-	ProxyDisplay      string    `json:"proxyDisplay,omitempty"`
-	ProxyFingerprint  string    `json:"proxyFingerprint,omitempty"`
-	AccountBoundProxy bool      `json:"accountBoundProxy"`
-	CreatedAt         time.Time `json:"createdAt"`
-	UpdatedAt         time.Time `json:"updatedAt"`
+	ID                uint64     `json:"id,string"`
+	Name              string     `json:"name"`
+	Enabled           bool       `json:"enabled"`
+	ProxyDisplay      string     `json:"proxyDisplay,omitempty"`
+	ProxyFingerprint  string     `json:"proxyFingerprint,omitempty"`
+	AccountBoundProxy bool       `json:"accountBoundProxy"`
+	ProbeStatus       string     `json:"probeStatus"`
+	LastProbedAt      *time.Time `json:"lastProbedAt,omitempty"`
+	ProbeLatencyMS    int        `json:"probeLatencyMs"`
+	ProbeStatusCode   int        `json:"probeStatusCode,omitempty"`
+	ProbeError        string     `json:"probeError,omitempty"`
+	CreatedAt         time.Time  `json:"createdAt"`
+	UpdatedAt         time.Time  `json:"updatedAt"`
 }
 
 func newBuildOAuthProxyResponse(value egressdomain.PublicBuildOAuthProxy) buildOAuthProxyResponse {
+	status := string(value.ProbeStatus)
+	if status == "" {
+		status = string(egressdomain.ProbeStatusUnknown)
+	}
 	return buildOAuthProxyResponse{
 		ID: value.ID, Name: value.Name, Enabled: value.Enabled,
 		ProxyDisplay: value.ProxyDisplay, ProxyFingerprint: value.ProxyFingerprint,
-		AccountBoundProxy: value.AccountBoundProxy, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+		AccountBoundProxy: value.AccountBoundProxy, ProbeStatus: status,
+		LastProbedAt: value.LastProbedAt, ProbeLatencyMS: value.ProbeLatencyMS,
+		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
+}
+
+type buildOAuthProbeRequest struct {
+	ProxyURL string `json:"proxyURL"`
+}
+
+func newBuildOAuthProbeResponse(value egressdomain.BuildOAuthProbeResult) gin.H {
+	return gin.H{
+		"status": value.Status, "testedAt": value.TestedAt, "latencyMs": value.LatencyMS,
+		"statusCode": value.StatusCode, "error": value.Error, "target": value.Target,
+	}
+}
+
+func (h *Handler) testBuildOAuthProxyURL(c *gin.Context) {
+	var request buildOAuthProbeRequest
+	if c.ShouldBindJSON(&request) != nil {
+		response.Error(c, http.StatusBadRequest, "invalidRequest", "请求参数无效")
+		return
+	}
+	value, err := h.service.TestBuildOAuthProxyURL(c.Request.Context(), request.ProxyURL)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, newBuildOAuthProbeResponse(value))
+}
+
+func (h *Handler) testBuildOAuthProxy(c *gin.Context) {
+	id, ok := pathID(c)
+	if !ok {
+		return
+	}
+	value, err := h.service.TestBuildOAuthProxy(c.Request.Context(), id)
+	if err != nil {
+		h.writeError(c, err)
+		return
+	}
+	response.Success(c, http.StatusOK, newBuildOAuthProbeResponse(value))
 }
 
 func (h *Handler) listBuildOAuthProxies(c *gin.Context) {

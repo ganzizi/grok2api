@@ -115,6 +115,11 @@ type BuildOAuthProxy struct {
 	Name              string
 	EncryptedProxyURL string
 	Enabled           bool
+	ProbeStatus       ProbeStatus
+	LastProbedAt      *time.Time
+	ProbeLatencyMS    int
+	ProbeStatusCode   int
+	ProbeError        string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -126,8 +131,22 @@ type PublicBuildOAuthProxy struct {
 	ProxyDisplay      string
 	ProxyFingerprint  string
 	AccountBoundProxy bool
+	ProbeStatus       ProbeStatus
+	LastProbedAt      *time.Time
+	ProbeLatencyMS    int
+	ProbeStatusCode   int
+	ProbeError        string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
+}
+
+type BuildOAuthProbeResult struct {
+	Status     ProbeStatus
+	TestedAt   time.Time
+	LatencyMS  int
+	StatusCode int
+	Error      string
+	Target     string
 }
 
 type ProbeStatus string

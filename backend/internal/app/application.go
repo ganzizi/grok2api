@@ -313,6 +313,7 @@ func New(ctx context.Context, cfg config.Config, logger *slog.Logger) (*Applicat
 	egressService.ConfigureAutoAssignBounds(cfg.Routing.AutoAssignMaxNodeShare, cfg.Routing.AutoAssignMaxMigrationShare)
 	egressService.SetClearanceManager(egressManager)
 	egressService.SetNodeProber(egressManager)
+	egressService.SetBuildOAuthProber(infraegress.ProbeAuthXAI)
 	egressService.SetOperationsConfigInvalidator(egressManager)
 	egressManager.SetFailureProber(egressService.TestNode)
 	clientKeyService := clientkeyapp.NewService(clientKeyRepo, rateLimiter, concurrency, cfg.ClientKeyDefaults.RPMLimit, cfg.ClientKeyDefaults.MaxConcurrent, cipher)

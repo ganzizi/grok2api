@@ -47,6 +47,13 @@ func (r *EgressRepository) UpdateBuildOAuthProxy(ctx context.Context, value egre
 	current.Name = strings.TrimSpace(value.Name)
 	current.EncryptedProxyURL = value.EncryptedProxyURL
 	current.Enabled = value.Enabled
+	if value.ProbeStatus != "" {
+		current.ProbeStatus = string(value.ProbeStatus)
+		current.LastProbedAt = value.LastProbedAt
+		current.ProbeLatencyMS = value.ProbeLatencyMS
+		current.ProbeStatusCode = value.ProbeStatusCode
+		current.ProbeError = value.ProbeError
+	}
 	if err := r.db.db.WithContext(ctx).Save(&current).Error; err != nil {
 		return egress.BuildOAuthProxy{}, mapError(err)
 	}
@@ -64,13 +71,26 @@ func (r *EgressRepository) DeleteBuildOAuthProxy(ctx context.Context, id uint64)
 func toBuildOAuthProxyDomain(row buildOAuthProxyModel) egress.BuildOAuthProxy {
 	return egress.BuildOAuthProxy{
 		ID: row.ID, Name: row.Name, EncryptedProxyURL: row.EncryptedProxyURL,
-		Enabled: row.Enabled, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
+		Enabled: row.Enabled, ProbeStatus: egress.ProbeStatus(row.ProbeStatus),
+		LastProbedAt: row.LastProbedAt, ProbeLatencyMS: row.ProbeLatencyMS,
+		ProbeStatusCode: row.ProbeStatusCode, ProbeError: row.ProbeError,
+		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }
 
 func fromBuildOAuthProxyDomain(value egress.BuildOAuthProxy) buildOAuthProxyModel {
 	return buildOAuthProxyModel{
 		ID: value.ID, Name: value.Name, EncryptedProxyURL: value.EncryptedProxyURL,
-		Enabled: value.Enabled, CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
+		Enabled: value.Enabled, ProbeStatus: probeStatusOrUnknown(value.ProbeStatus),
+		LastProbedAt: value.LastProbedAt, ProbeLatencyMS: value.ProbeLatencyMS,
+		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
+}
+
+func probeStatusOrUnknown(value egress.ProbeStatus) string {
+	if value == "" {
+		return string(egress.ProbeStatusUnknown)
+	}
+	return string(value)
 }

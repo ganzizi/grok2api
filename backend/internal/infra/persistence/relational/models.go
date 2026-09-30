@@ -522,10 +522,15 @@ type egressProxyProfileModel struct {
 func (egressProxyProfileModel) TableName() string { return "egress_proxy_profiles" }
 
 type buildOAuthProxyModel struct {
-	ID                uint64    `gorm:"primaryKey;autoIncrement"`
-	Name              string    `gorm:"size:160;not null;uniqueIndex;check:chk_build_oauth_proxies_name,length(trim(name)) BETWEEN 1 AND 160"`
-	EncryptedProxyURL string    `gorm:"type:text;not null;check:chk_build_oauth_proxies_url,length(encrypted_proxy_url) BETWEEN 1 AND 65536"`
-	Enabled           bool      `gorm:"not null;default:true"`
+	ID                uint64 `gorm:"primaryKey;autoIncrement"`
+	Name              string `gorm:"size:160;not null;uniqueIndex;check:chk_build_oauth_proxies_name,length(trim(name)) BETWEEN 1 AND 160"`
+	EncryptedProxyURL string `gorm:"type:text;not null;check:chk_build_oauth_proxies_url,length(encrypted_proxy_url) BETWEEN 1 AND 65536"`
+	Enabled           bool   `gorm:"not null;default:true"`
+	ProbeStatus       string `gorm:"size:16;not null;default:unknown"`
+	LastProbedAt      *time.Time
+	ProbeLatencyMS    int       `gorm:"not null;default:0"`
+	ProbeStatusCode   int       `gorm:"not null;default:0"`
+	ProbeError        string    `gorm:"size:512;not null;default:''"`
 	CreatedAt         time.Time `gorm:"not null"`
 	UpdatedAt         time.Time `gorm:"not null"`
 }

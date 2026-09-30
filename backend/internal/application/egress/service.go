@@ -131,6 +131,7 @@ type Service struct {
 	prober                      NodeProber
 	operationsCache             OperationsConfigInvalidator
 	qualityProber               QualityProber
+	oauthProber                 BuildOAuthURLProber
 	assignmentMu                sync.Mutex
 	lastAssignmentRun           time.Time
 	assignmentRunning           bool
@@ -160,6 +161,14 @@ type QualityLeaseInput struct {
 func (s *Service) SetQualityProber(value QualityProber) {
 	s.mu.Lock()
 	s.qualityProber = value
+	s.mu.Unlock()
+}
+
+type BuildOAuthURLProber func(context.Context, string) domain.BuildOAuthProbeResult
+
+func (s *Service) SetBuildOAuthProber(value BuildOAuthURLProber) {
+	s.mu.Lock()
+	s.oauthProber = value
 	s.mu.Unlock()
 }
 
