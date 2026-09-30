@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"regexp"
 	"strings"
@@ -13,13 +14,15 @@ import (
 )
 
 const (
-	oauthProbeTarget  = "https://auth.x.ai/oauth2/token"
-	oauthProbeAccount = "probe"
+	oauthProbeTarget    = "https://auth.x.ai/oauth2/token"
+	oauthProbeAccount   = "probe"
+	oauthProbeIPTimeout = 8 * time.Second
 )
 
 var (
 	newOAuthProbeClient = newBuildClient
 	credentialInURL     = regexp.MustCompile(`://[^/@:]+:[^/@]+@`)
+	oauthProbeIPTargets = []string{cloudflareIPv4ProbeEndpoint, egressIPv4ProbeEndpoint}
 )
 
 func ProbeAuthXAI(ctx context.Context, proxyURL string) domain.BuildOAuthProbeResult {
@@ -54,16 +57,61 @@ func ProbeAuthXAI(ctx context.Context, proxyURL string) domain.BuildOAuthProbeRe
 		return result
 	}
 	response, err := client.Do(request)
-	result.LatencyMS = elapsedMS(started)
 	if err != nil {
 		result.Error = sanitizeOAuthProbeError(err, rendered)
+		result.LatencyMS = elapsedMS(started)
 		return result
 	}
-	defer response.Body.Close()
 	_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	_ = response.Body.Close()
 	result.Status = domain.ProbeStatusHealthy
 	result.StatusCode = response.StatusCode
+	result.ExitIP = lookupOAuthProbeExitIP(ctx, client)
+	result.LatencyMS = elapsedMS(started)
 	return result
+}
+
+func lookupOAuthProbeExitIP(ctx context.Context, client *http.Client) string {
+	if client == nil {
+		return ""
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	ctx, cancel := context.WithTimeout(ctx, oauthProbeIPTimeout)
+	defer cancel()
+	for _, target := range oauthProbeIPTargets {
+		if ip := fetchOAuthProbeIP(ctx, client, target); ip != "" {
+			return ip
+		}
+	}
+	return ""
+}
+
+func fetchOAuthProbeIP(ctx context.Context, client *http.Client, target string) string {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil)
+	if err != nil {
+		return ""
+	}
+	request.Header.Set("User-Agent", DefaultUserAgent)
+	response, err := client.Do(request)
+	if err != nil {
+		return ""
+	}
+	defer response.Body.Close()
+	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	if err != nil || response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
+		return ""
+	}
+	raw, err := decodeProbeIP(body)
+	if err != nil {
+		return ""
+	}
+	address, err := netip.ParseAddr(strings.TrimSpace(raw))
+	if err != nil || !address.IsValid() || address.IsUnspecified() {
+		return ""
+	}
+	return address.String()
 }
 
 func elapsedMS(started time.Time) int {

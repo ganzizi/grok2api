@@ -125,7 +125,7 @@ export function BuildOAuthProxies() {
 
   function announceProbe(result: BuildOAuthProbeResultDTO) {
     if (result.status === "healthy") {
-      toast.success(t("buildOAuthProxies.testOK", { latency: result.latencyMs, status: result.statusCode || "-" }));
+      toast.success(t("buildOAuthProxies.testOK", { ip: result.exitIp || t("buildOAuthProxies.healthy"), latency: result.latencyMs }));
       return;
     }
     toast.error(t("buildOAuthProxies.testFail", { error: result.error || t("settings.egress.operationFailed") }));
@@ -278,7 +278,6 @@ export function BuildOAuthProxies() {
                 ) : null}
               </div>
               <p className="text-xs leading-5 text-muted-foreground">{t("buildOAuthProxies.proxyHelp")}</p>
-              <p className="font-mono text-[11px] leading-5 text-muted-foreground/80">{t("buildOAuthProxies.example")}</p>
             </div>
             <div className="flex min-h-10 items-center justify-between gap-4 rounded-md bg-muted/45 px-3">
               <div className="min-w-0">
@@ -332,8 +331,8 @@ function ProbeCell({ value, locale, testing }: { value: BuildOAuthProxyDTO; loca
   let dotClass = "bg-muted-foreground/35";
   let textClass = "text-muted-foreground";
   if (healthy) {
-    label = t("buildOAuthProxies.healthy");
-    detail = `${value.probeLatencyMs}ms${value.probeStatusCode ? ` · HTTP ${value.probeStatusCode}` : ""}`;
+    label = value.exitIp || t("buildOAuthProxies.healthy");
+    detail = value.exitIp ? `${value.exitIp} · ${value.probeLatencyMs}ms` : `${value.probeLatencyMs}ms`;
     dotClass = "bg-emerald-500";
     textClass = "text-foreground";
   } else if (unhealthy) {
@@ -364,7 +363,7 @@ function DraftProbe({ result }: { result: BuildOAuthProbeResultDTO }) {
   return (
     <div className={cn("rounded-md px-3 py-2 text-xs leading-5", ok ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-300" : "bg-destructive/10 text-destructive")}>
       {ok
-        ? t("buildOAuthProxies.testOK", { latency: result.latencyMs, status: result.statusCode || "-" })
+        ? t("buildOAuthProxies.testOK", { ip: result.exitIp || t("buildOAuthProxies.healthy"), latency: result.latencyMs })
         : t("buildOAuthProxies.testFail", { error: result.error || t("settings.egress.operationFailed") })}
     </div>
   );

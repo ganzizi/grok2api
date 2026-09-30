@@ -120,6 +120,7 @@ type BuildOAuthProxy struct {
 	ProbeLatencyMS    int
 	ProbeStatusCode   int
 	ProbeError        string
+	ProbeExitIP       string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -136,6 +137,7 @@ type PublicBuildOAuthProxy struct {
 	ProbeLatencyMS    int
 	ProbeStatusCode   int
 	ProbeError        string
+	ProbeExitIP       string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -147,6 +149,7 @@ type BuildOAuthProbeResult struct {
 	StatusCode int
 	Error      string
 	Target     string
+	ExitIP     string
 }
 
 type ProbeStatus string

@@ -1119,6 +1119,7 @@ type buildOAuthProxyResponse struct {
 	ProbeLatencyMS    int        `json:"probeLatencyMs"`
 	ProbeStatusCode   int        `json:"probeStatusCode,omitempty"`
 	ProbeError        string     `json:"probeError,omitempty"`
+	ProbeExitIP       string     `json:"exitIp,omitempty"`
 	CreatedAt         time.Time  `json:"createdAt"`
 	UpdatedAt         time.Time  `json:"updatedAt"`
 }
@@ -1133,7 +1134,7 @@ func newBuildOAuthProxyResponse(value egressdomain.PublicBuildOAuthProxy) buildO
 		ProxyDisplay: value.ProxyDisplay, ProxyFingerprint: value.ProxyFingerprint,
 		AccountBoundProxy: value.AccountBoundProxy, ProbeStatus: status,
 		LastProbedAt: value.LastProbedAt, ProbeLatencyMS: value.ProbeLatencyMS,
-		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError,
+		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError, ProbeExitIP: value.ProbeExitIP,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }
@@ -1145,7 +1146,7 @@ type buildOAuthProbeRequest struct {
 func newBuildOAuthProbeResponse(value egressdomain.BuildOAuthProbeResult) gin.H {
 	return gin.H{
 		"status": value.Status, "testedAt": value.TestedAt, "latencyMs": value.LatencyMS,
-		"statusCode": value.StatusCode, "error": value.Error, "target": value.Target,
+		"statusCode": value.StatusCode, "error": value.Error, "target": value.Target, "exitIp": value.ExitIP,
 	}
 }
 

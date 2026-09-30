@@ -531,6 +531,7 @@ type buildOAuthProxyModel struct {
 	ProbeLatencyMS    int       `gorm:"not null;default:0"`
 	ProbeStatusCode   int       `gorm:"not null;default:0"`
 	ProbeError        string    `gorm:"size:512;not null;default:''"`
+	ProbeExitIP       string    `gorm:"size:64;not null;default:''"`
 	CreatedAt         time.Time `gorm:"not null"`
 	UpdatedAt         time.Time `gorm:"not null"`
 }

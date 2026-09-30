@@ -178,7 +178,7 @@ func TestTestBuildOAuthProxyPersistsResult(t *testing.T) {
 		seen = proxyURL
 		return domain.BuildOAuthProbeResult{
 			Status: domain.ProbeStatusHealthy, TestedAt: time.Unix(1700000000, 0).UTC(),
-			LatencyMS: 321, StatusCode: 400, Target: "auth.x.ai:443",
+			LatencyMS: 321, StatusCode: 400, Target: "auth.x.ai:443", ExitIP: "203.0.113.10",
 		}
 	})
 	proxyURL := "socks5h://US.{account}:token@127.0.0.1:2260"
@@ -190,14 +190,14 @@ func TestTestBuildOAuthProxyPersistsResult(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Status != domain.ProbeStatusHealthy || result.StatusCode != 400 || result.LatencyMS != 321 {
+	if result.Status != domain.ProbeStatusHealthy || result.StatusCode != 400 || result.LatencyMS != 321 || result.ExitIP != "203.0.113.10" {
 		t.Fatalf("result = %+v", result)
 	}
 	if !strings.Contains(seen, "US.probe") || strings.Contains(seen, "{account}") {
 		t.Fatalf("placeholder not rendered: %q", seen)
 	}
 	listed, err := service.ListBuildOAuthProxies(context.Background())
-	if err != nil || len(listed) != 1 || listed[0].ProbeStatus != domain.ProbeStatusHealthy || listed[0].ProbeLatencyMS != 321 {
+	if err != nil || len(listed) != 1 || listed[0].ProbeStatus != domain.ProbeStatusHealthy || listed[0].ProbeLatencyMS != 321 || listed[0].ProbeExitIP != "203.0.113.10" {
 		t.Fatalf("listed = %+v, err = %v", listed, err)
 	}
 }

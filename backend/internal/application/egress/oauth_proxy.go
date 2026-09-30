@@ -146,8 +146,8 @@ func (s *Service) publicBuildOAuthProxy(value domain.BuildOAuthProxy) domain.Pub
 		ID: value.ID, Name: value.Name, Enabled: value.Enabled,
 		ProbeStatus: status, LastProbedAt: value.LastProbedAt,
 		ProbeLatencyMS: value.ProbeLatencyMS, ProbeStatusCode: value.ProbeStatusCode,
-		ProbeError: value.ProbeError,
-		CreatedAt:  value.CreatedAt, UpdatedAt: value.UpdatedAt,
+		ProbeError: value.ProbeError, ProbeExitIP: value.ProbeExitIP,
+		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 	display, fingerprint, accountBound := s.proxyMetadata(value.EncryptedProxyURL)
 	result.ProxyDisplay = display
@@ -199,6 +199,7 @@ func (s *Service) TestBuildOAuthProxy(ctx context.Context, id uint64) (domain.Bu
 	value.ProbeLatencyMS = result.LatencyMS
 	value.ProbeStatusCode = result.StatusCode
 	value.ProbeError = truncateProbeError(result.Error)
+	value.ProbeExitIP = result.ExitIP
 	if _, err := s.oauthProxies.UpdateBuildOAuthProxy(ctx, value); err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
 			return result, ErrBuildOAuthProxyNotFound

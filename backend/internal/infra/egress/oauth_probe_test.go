@@ -17,7 +17,9 @@ func TestProbeAuthXAITreatsHTTPResponseAsHealthy(t *testing.T) {
 	previous := newOAuthProbeClient
 	newOAuthProbeClient = func(string, time.Duration) (*http.Client, error) {
 		return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
-			host = request.URL.Host
+			if request.URL.Host == "auth.x.ai" {
+				host = request.URL.Host
+			}
 			return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader("missing grant")), Header: make(http.Header)}, nil
 		})}, nil
 	}
@@ -26,6 +28,24 @@ func TestProbeAuthXAITreatsHTTPResponseAsHealthy(t *testing.T) {
 	result := ProbeAuthXAI(context.Background(), "socks5h://US.{account}:secret@127.0.0.1:2260")
 	if result.Status != domain.ProbeStatusHealthy || result.StatusCode != 400 || host != "auth.x.ai" {
 		t.Fatalf("result = %+v host = %q", result, host)
+	}
+}
+
+func TestProbeAuthXAIReadsExitIP(t *testing.T) {
+	previous := newOAuthProbeClient
+	newOAuthProbeClient = func(string, time.Duration) (*http.Client, error) {
+		return &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+			if request.URL.Host == "auth.x.ai" {
+				return &http.Response{StatusCode: 400, Body: io.NopCloser(strings.NewReader("missing grant")), Header: make(http.Header)}, nil
+			}
+			return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader("ip=203.0.113.10\n")), Header: make(http.Header)}, nil
+		})}, nil
+	}
+	t.Cleanup(func() { newOAuthProbeClient = previous })
+
+	result := ProbeAuthXAI(context.Background(), "socks5h://US.{account}:secret@127.0.0.1:2260")
+	if result.Status != domain.ProbeStatusHealthy || result.ExitIP != "203.0.113.10" {
+		t.Fatalf("result = %+v", result)
 	}
 }
 

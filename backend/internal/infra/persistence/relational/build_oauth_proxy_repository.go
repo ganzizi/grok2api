@@ -53,6 +53,7 @@ func (r *EgressRepository) UpdateBuildOAuthProxy(ctx context.Context, value egre
 		current.ProbeLatencyMS = value.ProbeLatencyMS
 		current.ProbeStatusCode = value.ProbeStatusCode
 		current.ProbeError = value.ProbeError
+		current.ProbeExitIP = value.ProbeExitIP
 	}
 	if err := r.db.db.WithContext(ctx).Save(&current).Error; err != nil {
 		return egress.BuildOAuthProxy{}, mapError(err)
@@ -73,7 +74,7 @@ func toBuildOAuthProxyDomain(row buildOAuthProxyModel) egress.BuildOAuthProxy {
 		ID: row.ID, Name: row.Name, EncryptedProxyURL: row.EncryptedProxyURL,
 		Enabled: row.Enabled, ProbeStatus: egress.ProbeStatus(row.ProbeStatus),
 		LastProbedAt: row.LastProbedAt, ProbeLatencyMS: row.ProbeLatencyMS,
-		ProbeStatusCode: row.ProbeStatusCode, ProbeError: row.ProbeError,
+		ProbeStatusCode: row.ProbeStatusCode, ProbeError: row.ProbeError, ProbeExitIP: row.ProbeExitIP,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt,
 	}
 }
@@ -83,7 +84,7 @@ func fromBuildOAuthProxyDomain(value egress.BuildOAuthProxy) buildOAuthProxyMode
 		ID: value.ID, Name: value.Name, EncryptedProxyURL: value.EncryptedProxyURL,
 		Enabled: value.Enabled, ProbeStatus: probeStatusOrUnknown(value.ProbeStatus),
 		LastProbedAt: value.LastProbedAt, ProbeLatencyMS: value.ProbeLatencyMS,
-		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError,
+		ProbeStatusCode: value.ProbeStatusCode, ProbeError: value.ProbeError, ProbeExitIP: value.ProbeExitIP,
 		CreatedAt: value.CreatedAt, UpdatedAt: value.UpdatedAt,
 	}
 }
