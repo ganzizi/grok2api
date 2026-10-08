@@ -511,16 +511,7 @@ func (s *Service) checkLedgerReady() error {
 
 func (s *Service) CreateResponse(ctx context.Context, input Input) (*Result, error) {
 	input.Operation = audit.OperationResponses
-	switch classifyResponsesCompactionRequest(input.Body) {
-	case responsesCompactionTrigger:
-		input.Operation = audit.OperationCompaction
-	case responsesCompactionTUI:
-		// Grok TUI compaction is still a normal Responses request. Keep its
-		// routing, Provider normalization, and stored-response behavior intact;
-		// only its audit classification and quality-hold policy differ.
-		input.auditOperation = audit.OperationCompaction
-		input.skipQualityHold = true
-	}
+	applyResponsesCompactionClassification(&input)
 	return s.createResponseAt(ctx, input, "/responses")
 }
 

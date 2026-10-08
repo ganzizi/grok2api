@@ -32,9 +32,10 @@ Claude Code `/compact` 与自动压缩走 Anthropic `POST /v1/messages`。New AP
 
 | 命中 | 种类 | skip hold？ | 改 `Operation`？ |
 | --- | --- | --- | --- |
-| `input[].type = compaction_trigger` | `responsesCompactionTrigger` | 否（TUI helper 不处理） | `CreateResponse` 会改成 compaction；chat/messages helper **不改** |
+| `input[].type = compaction_trigger` | `responsesCompactionTrigger` | **是**（`CreateResponse` 的 `applyResponsesCompactionClassification`） | `CreateResponse` 会改成 compaction；chat/messages helper **不改、不 skip** |
 | 含 TUI 句 `it is a system-generated compaction prompt, not a real user message` | `responsesCompactionTUI` | 是 | 否，只写 `auditOperation` |
 | **同时**含 Claude 两句（AND） | 同上，走 TUI 分支 | 是 | 否 |
+| **同时**含 Grok Build 两句（AND）：`1. Primary Request and Intent` 与 `Output the final summary inside a single <summary>` | 同上，走 TUI 分支 | 是 | 否 |
 | 只命中其中一句、历史中间的压缩提示、assistant/system、最后一条是 `function_call_output` | 否 | 否 | 否 |
 
 Claude 两句：
@@ -45,7 +46,7 @@ Claude 两句：
 接线：
 
 ```text
-CreateResponse:        classify → TUI 则 auditOperation + skipQualityHold
+CreateResponse:        applyResponsesCompactionClassification → trigger 则 Operation=compaction + skip；TUI 则 auditOperation + skip
 CreateMessage:         Operation=messages 后 applyTUICompactionQualitySkip(&input)
 CreateChatCompletion:  Operation=chat     后 applyTUICompactionQualitySkip(&input)
 ```
@@ -63,6 +64,7 @@ CreateChatCompletion:  Operation=chat     后 applyTUICompactionQualitySkip(&inp
 | Claude compact → `/v1/messages` | 质量 hold，常 503 `quality_degraded` | skip hold，审计 operation=compaction，HTTP 200（即使没有 reasoning tokens） |
 | Claude compact → New API → `/v1/chat/completions` | 同上，且 `CreateChatCompletion` 完全没 skip | 与 messages 相同 |
 | Grok TUI compact → `/v1/responses` | 已 skip（本补丁前就有） | 不变 |
+| Codex `compaction_trigger` → `/v1/responses` | 质量 hold，常 503 `quality_degraded` | skip hold，审计 operation=compaction |
 | 普通编码轮次（最后一条不是压缩 user） | fail_closed | **不变** |
 | 最后一条是 `function_call_output` / 普通 user | 503 缺推理 | **不变**（不是压缩） |
 | `qualityGuard.requestRetry.onExhausted` | fail_closed | **不变** |
@@ -79,6 +81,9 @@ CreateChatCompletion:  Operation=chat     后 applyTUICompactionQualitySkip(&inp
 文件：`backend/internal/application/gateway/claude_code_compact_hold_test.go`（上游没有，合完必须还在）
 
 - `TestApplyTUICompactionQualitySkip`：messages/chat skip 且 Operation 不变；普通编码不 skip；单标记不 skip；`compaction_trigger` 不经 helper skip
+- `TestCreateMessageWiresTUICompactionQualitySkip`：`CreateMessage` 调用 TUI helper，不用 Responses helper
+- `TestApplyResponsesCompactionClassification` / `TestCreateResponseCompactionTriggerQualityHoldComposition` / `TestCreateResponseWiresCompactionClassification`：Codex trigger skip hold；普通编码仍 hold
+- `TestGrokBuildStructuredCompactQualityHoldComposition`：Grok Build 双标记 skip；单标记不 skip
 - `TestClaudeCodeCompactMessagesQualityHoldComposition` / `...Chat...`：skip 前后与 `shouldHoldQualityStream` 组合
 - `TestCreateChatCompletionWiresTUICompactionQualitySkip`：源码断言 `CreateChatCompletion` 调用 helper 且不写 `OperationCompaction`
 

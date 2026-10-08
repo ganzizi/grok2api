@@ -10,6 +10,12 @@ const claudeCodeFirstMarkerOnly = "Your task is to create a detailed summary of 
 
 const claudeCodeAnalysisMarkerOnly = "Before providing your final summary, wrap your analysis in <analysis> tags to organize your thoughts."
 
+const grokBuildCompactionStructuredPrompt = "Output the final summary inside a single <summary> block, organized into the following numbered sections. 1. Primary Request and Intent: All of the user's explicit requests."
+
+const grokBuildCompactionPrimaryMarkerOnly = "1. Primary Request and Intent: All of the user's explicit requests."
+
+const grokBuildCompactionSummaryMarkerOnly = "Output the final summary inside a single <summary> block, organized into the following numbered sections."
+
 func TestIsResponsesCompactionRequest(t *testing.T) {
 	tests := []struct {
 		name string
@@ -35,6 +41,12 @@ func TestIsResponsesCompactionRequest(t *testing.T) {
 		{name: "claude code first marker only", body: `{"messages":[{"role":"user","content":"` + claudeCodeFirstMarkerOnly + `"}]}`, want: responsesCompactionNone},
 		{name: "claude code analysis marker only", body: `{"messages":[{"role":"user","content":"` + claudeCodeAnalysisMarkerOnly + `"}]}`, want: responsesCompactionNone},
 		{name: "mentions compact in normal turn", body: `{"messages":[{"role":"user","content":"please explain what /compact does"}]}`, want: responsesCompactionNone},
+		{name: "grok build structured last user", body: `{"input":[{"role":"user","content":"continue"},{"role":"user","content":"` + grokBuildCompactionStructuredPrompt + `"}]}`, want: responsesCompactionTUI},
+		{name: "grok build structured last user parts", body: `{"input":[{"role":"user","content":[{"type":"input_text","text":"` + grokBuildCompactionStructuredPrompt + `"}]}]}`, want: responsesCompactionTUI},
+		{name: "grok build structured on messages", body: `{"messages":[{"role":"user","content":"` + grokBuildCompactionStructuredPrompt + `"}]}`, want: responsesCompactionTUI},
+		{name: "grok build structured only in history", body: `{"input":[{"role":"user","content":"` + grokBuildCompactionStructuredPrompt + `"},{"role":"user","content":"continue the task"}]}`, want: responsesCompactionNone},
+		{name: "grok build primary marker only", body: `{"input":[{"role":"user","content":"` + grokBuildCompactionPrimaryMarkerOnly + `"}]}`, want: responsesCompactionNone},
+		{name: "grok build summary marker only", body: `{"input":[{"role":"user","content":"` + grokBuildCompactionSummaryMarkerOnly + `"}]}`, want: responsesCompactionNone},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {

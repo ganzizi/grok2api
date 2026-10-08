@@ -48,7 +48,9 @@ git merge-base HEAD upstream/main
 | --- | --- | --- | --- | --- | --- |
 | Claude Code /compact 跳过质量 hold（Messages） | `d024cd93` | `responses_compaction.go` `service.go` `claude_code_compact_hold_test.go` | 最后一条 user 同时含两句 Claude 压缩标记 → `auditOperation=compaction` 且 `skipQualityHold=true` | `CreateMessage` 里有 `applyTUICompactionQualitySkip(&input)`；分类器双标记仍是 **AND** | 不要改 `Operation`；不要改成「历史里任意 user 命中就算压缩」 |
 | 同上，Chat 入口 | `6a23bfc4` | `service.go` | New API 把 Anthropic 压缩转到 `POST /v1/chat/completions`，`CreateChatCompletion` 同样 skip | `CreateChatCompletion` 里有同一 helper；测试 `TestCreateChatCompletionWiresTUICompactionQualitySkip` | 同上。漏接这一行，New API 压缩会再 503 |
-| Grok TUI 压缩 skip | 随分类器，早于 Claude 补丁 | `CreateResponse` 分支 `responsesCompactionTUI` | TUI 标记「system-generated compaction prompt」同样 skip hold | `CreateResponse` 仍只改 audit + skip，不改 Responses 路由 | 不要把 TUI 压缩改成 `OperationCompaction`（会改 Provider 语义） |
+| Grok TUI 压缩 skip | 随分类器，早于 Claude 补丁 | `CreateResponse` 经 `applyResponsesCompactionClassification` | TUI 标记「system-generated compaction prompt」skip hold，不改 `Operation` | `CreateResponse` 调用 helper；TUI 仍只改 audit + skip | 不要把 TUI 压缩改成 `OperationCompaction`（会改 Provider 语义） |
+| Codex `compaction_trigger` skip hold | 本轮 | `responses_compaction.go` `service.go` `claude_code_compact_hold_test.go` | `/v1/responses` 上 `compaction_trigger` → `Operation=compaction` 且 `skipQualityHold=true`。Chat/Messages **不**走这个 helper | `CreateResponse` 有 `applyResponsesCompactionClassification(&input)`；`CreateChatCompletion`/`CreateMessage` 仍是 `applyTUICompactionQualitySkip`；测试 `TestCreateResponseWiresCompactionClassification` `TestCreateMessageWiresTUICompactionQualitySkip` | 不要在 chat/messages 上调用 Responses helper。不要 fail_open |
+| Grok Build 结构化压缩提示 skip | 本轮 | `looksLikeCompactionPrompt` | 最后一条 user **同时**含 `1. Primary Request and Intent` 与 `Output the final summary inside a single <summary>` → TUI 分支 skip | 分类器仍是 **AND** + 只看最后一条；单标记测试仍不 skip | 不要改成扫整段历史 |
 | 会话 pin 在免费额度耗尽后换号 | `47f9e31` | `service.go` `service_test.go` | `previous_response_id` 钉死的号 A 免费额度 429 / 已冷却 → 释放 in-request pin，从号池选 B。成功路径仍钉原号。账号禁用仍 503 | 日志字段 `pinned_account_quota_exhausted_failover`；测试 `TestGatewayPreviousResponseIDFailoversAfterFreeQuotaExhaustion` | **不要回滚。** 不要对任意 429 清 ownership（hosted 工具会重放） |
 | 质量守卫 fail_closed + Build-only | 子分支适配：`308d7a2c` `69e48e6f` `77ffed04` 等 | `quality_retry.go` `config.example.yaml` | 编码轮次缺推理扣留并重试，耗尽 `fail_closed` → 对外 503 `quality_degraded`。Web/Console 流式不走这套 | `shouldHoldQualityStream` 仍认 `skipQualityHold`；`OnExhausted` 仍是 fail_closed | **不要 fail_open**（压缩摘要会污染会话，表现为降智） |
 | 假加密 / 短答倾倒扣留 | `77ffed04` `2d591039` `f341aaa2` | `quality_retry.go` `quality_retry_scan.go` | fake-enc、cipher-drool、floor 后 1s 短答倾倒仍 withhold | 与上游 `7f3f3d3c` 同类时走等价，保留 Fork 的 overflow-safe floor 和 provider 隔离 | 不要用子分支整文件覆盖本 fork 的 floor 实现 |
@@ -72,9 +74,9 @@ pin 换号与探测 429 噪音见 [2026-09-12 免费额度 429](./2026-09-12-fre
 | --- | --- |
 | `Input.skipQualityHold` | 仅网关分类器可写 |
 | `Input.auditOperation` | 只改审计展示，不改路由 |
-| `CreateResponse` TUI 分支 | skip hold，不改 `Operation` |
+| `CreateResponse` | `applyResponsesCompactionClassification(&input)`：trigger skip hold 且改 Operation；TUI 只 audit + skip |
 | `CreateChatCompletion` | `applyTUICompactionQualitySkip(&input)` 在 `createResponseAt` 之前 |
-| `CreateMessage` | 同上 |
+| `CreateMessage` | 同上，禁止调用 `applyResponsesCompactionClassification` |
 | `releasePinnedOwnership` / `pinned_account_quota_exhausted_failover` | 仅免费额度耗尽 / 钉死号已冷却 |
 | `recordQualityDegraded` 调用 | 扣留流另写 200 审计；不要改成改客户端 HTTP |
 
@@ -86,9 +88,10 @@ pin 换号与探测 429 噪音见 [2026-09-12 免费额度 429](./2026-09-12-fre
 | --- | --- |
 | `claudeCodeCompactionPromptMarker` | Claude 压缩第一句 |
 | `claudeCodeCompactionAnalysisMarker` | `wrap your analysis in <analysis> tags` |
-| `looksLikeCompactionPrompt` | TUI 标记 **或** Claude 两句同时命中 |
+| `looksLikeCompactionPrompt` | TUI 标记 **或** Claude 两句同时命中 **或** Grok Build 两句同时命中 |
 | `lastItemLooksLikeCompactionPrompt` | **只看最后一条**，且 `role=user` |
 | `applyTUICompactionQualitySkip` | 仅 `responsesCompactionTUI` 时 skip；`compaction_trigger` 不走这个 helper |
+| `applyResponsesCompactionClassification` | 仅 `CreateResponse`：trigger 改 Operation + skip；TUI 只 audit + skip |
 
 ### `backend/internal/application/gateway/claude_code_compact_hold_test.go`
 

@@ -18,6 +18,12 @@ const clientCompactionPromptMarker = "it is a system-generated compaction prompt
 const claudeCodeCompactionPromptMarker = "Your task is to create a detailed summary of the conversation so far, paying close attention to the user's explicit requests and your previous actions."
 const claudeCodeCompactionAnalysisMarker = "wrap your analysis in <analysis> tags"
 
+// Grok Build full-replace compact prompt (and New API inlined copies of it)
+// without the TUI sentence. Both fragments must match so a coding turn that
+// quotes one heading is not classified as compaction.
+const grokBuildCompactionPrimaryMarker = "1. Primary Request and Intent"
+const grokBuildCompactionSummaryMarker = "Output the final summary inside a single <summary>"
+
 type responsesCompactionKind uint8
 
 const (
@@ -85,8 +91,12 @@ func looksLikeCompactionPrompt(text string) bool {
 	if strings.Contains(text, clientCompactionPromptMarker) {
 		return true
 	}
-	return strings.Contains(text, claudeCodeCompactionPromptMarker) &&
-		strings.Contains(text, claudeCodeCompactionAnalysisMarker)
+	if strings.Contains(text, claudeCodeCompactionPromptMarker) &&
+		strings.Contains(text, claudeCodeCompactionAnalysisMarker) {
+		return true
+	}
+	return strings.Contains(text, grokBuildCompactionPrimaryMarker) &&
+		strings.Contains(text, grokBuildCompactionSummaryMarker)
 }
 
 func extractContentText(raw json.RawMessage) string {
@@ -115,6 +125,23 @@ func applyTUICompactionQualitySkip(input *Input) {
 		return
 	}
 	if classifyResponsesCompactionRequest(input.Body) == responsesCompactionTUI {
+		input.auditOperation = audit.OperationCompaction
+		input.skipQualityHold = true
+	}
+}
+
+// applyResponsesCompactionClassification is for CreateResponse only.
+// Chat/Messages must keep using applyTUICompactionQualitySkip so
+// ConvertRequest still keys on OperationChat/OperationMessages.
+func applyResponsesCompactionClassification(input *Input) {
+	if input == nil {
+		return
+	}
+	switch classifyResponsesCompactionRequest(input.Body) {
+	case responsesCompactionTrigger:
+		input.Operation = audit.OperationCompaction
+		input.skipQualityHold = true
+	case responsesCompactionTUI:
 		input.auditOperation = audit.OperationCompaction
 		input.skipQualityHold = true
 	}
