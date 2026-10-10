@@ -36,7 +36,6 @@ import { formatDateTime } from "@/shared/lib/format";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
 
 const modelSyncToastID = "model-sync-progress";
-const accountPageSizes = [20, 50, 100] as const;
 
 export function ModelsPage() {
   const { t, i18n } = useTranslation();
@@ -436,7 +435,7 @@ export function ModelsPage() {
                       </div>
                     </div>
                     {!accountOptionsQuery.isPending && accountOptions.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountPool", { selected: selectedAccountIDs.length, total: accountOptions.length })}</p> : null}
-                    {accountOptions.length > 0 ? <Pagination className="mt-2" page={currentAccountPage} pageSize={accountPageSize} total={visibleAccountOptions.length} pageSizeOptions={accountPageSizes} onPageChange={setAccountPage} onPageSizeChange={(value) => { setAccountPageSize(value); setAccountPage(1); }} /> : null}
+                    {accountOptions.length > 0 ? <Pagination className="mt-2" page={currentAccountPage} pageSize={accountPageSize} total={visibleAccountOptions.length} onPageChange={setAccountPage} onPageSizeChange={(value) => { setAccountPageSize(value); setAccountPage(1); }} /> : null}
                     {form.formState.errors.accountIds ? <p className="mt-2 text-xs text-destructive" role="alert">{form.formState.errors.accountIds.message}</p> : null}
                   </div>
                 ) : null}
