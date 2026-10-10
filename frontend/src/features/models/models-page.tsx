@@ -23,7 +23,7 @@ import { Table, TableActionCell, TableActionHead, TableBody, TableCell, TableHea
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { createModel, deleteModel, deleteModels, listModelAccountOptions, listModelGroups, syncModels, updateModel, updateModelsEnabled } from "@/entities/model/model-api";
 import type { ModelEndpointCapability, ModelRouteDTO, ModelRouteGroupDTO } from "@/entities/model/types";
-import { MAX_BOUND_ACCOUNTS, mergeVisibleBoundAccountSelection, visibleBoundAccountsFullySelected } from "@/features/models/bind-accounts";
+import { mergeVisibleBoundAccountSelection, visibleBoundAccountsFullySelected } from "@/features/models/bind-accounts";
 import { EmptyState, ErrorState, TableLoadingRow } from "@/shared/components/data-state";
 import { DataTableShell } from "@/shared/components/data-table-shell";
 import { DataTableFilters } from "@/shared/components/data-table-filters";
@@ -59,7 +59,7 @@ export function ModelsPage() {
     capability: z.enum(["responses", "chat", "image", "image_edit", "video", "tts", "stt", "realtime"]),
     enabled: z.boolean(),
     bindingMode: z.boolean(),
-    accountIds: z.array(z.string()).max(MAX_BOUND_ACCOUNTS, t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS })),
+    accountIds: z.array(z.string()),
   }).refine((value) => !value.bindingMode || value.accountIds.length > 0, { path: ["accountIds"], message: t("models.selectAccountRequired") });
   type ModelForm = z.infer<typeof schema>;
   const form = useForm<ModelForm>({
@@ -188,10 +188,6 @@ export function ModelsPage() {
     if (current.includes(id)) {
       return;
     }
-    if (current.length >= MAX_BOUND_ACCOUNTS) {
-      toast(t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS }));
-      return;
-    }
     form.setValue("accountIds", [...current, id], { shouldValidate: true });
   }
 
@@ -203,20 +199,13 @@ export function ModelsPage() {
   const visibleAccountIDs = visibleAccountOptions.map((account) => account.id);
   const selectedAccountIDSet = new Set(selectedAccountIDs);
   const visibleAccountsFullySelected = visibleBoundAccountsFullySelected(selectedAccountIDs, visibleAccountIDs);
-  const selectAllWouldAdd = selectedAccountIDs.length < MAX_BOUND_ACCOUNTS && visibleAccountIDs.some((id) => !selectedAccountIDSet.has(id));
+  const selectAllWouldAdd = visibleAccountIDs.some((id) => !selectedAccountIDSet.has(id));
 
   function toggleVisibleBoundAccounts(): void {
     const current = form.getValues("accountIds");
     const selectVisible = !visibleBoundAccountsFullySelected(current, visibleAccountIDs);
     const next = mergeVisibleBoundAccountSelection(current, visibleAccountIDs, selectVisible);
     form.setValue("accountIds", next, { shouldValidate: true });
-    if (!selectVisible) {
-      return;
-    }
-    const selected = new Set(next);
-    if (next.length >= MAX_BOUND_ACCOUNTS && visibleAccountIDs.some((id) => !selected.has(id))) {
-      toast(t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS }));
-    }
   }
 
   const result = useMemo(() => modelsQuery.data ? { ...modelsQuery.data, items: modelsQuery.data.items.map((group) => newModelRouteGroup(group, t)) } : undefined, [modelsQuery.data, t]);
@@ -421,7 +410,7 @@ export function ModelsPage() {
                           </Button>
                         ) : null}
                       </div>
-                      <div id="model-bound-account-list" role="group" aria-label={t("models.boundAccounts")} className="mt-1 max-h-40 overflow-y-auto overscroll-contain sm:max-h-44">
+                      <div id="model-bound-account-list" role="group" aria-label={t("models.boundAccounts")} className="mt-1 max-h-72 overflow-y-auto overscroll-contain">
                         {accountOptionsQuery.isPending ? <div className="flex min-h-20 items-center justify-center"><Spinner /></div> : null}
                         {accountOptionsQuery.isError ? <p className="p-3 text-center text-xs text-destructive">{accountOptionsQuery.error.message}</p> : null}
                         {!accountOptionsQuery.isPending && visibleAccountOptions.length === 0 ? <p className="p-3 text-center text-xs text-muted-foreground">{t("models.noBindableAccounts")}</p> : null}
@@ -438,7 +427,7 @@ export function ModelsPage() {
                         })}
                       </div>
                     </div>
-                    {accountOptions.length >= MAX_BOUND_ACCOUNTS ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountListCapped", { max: MAX_BOUND_ACCOUNTS })}</p> : null}
+                    {!accountOptionsQuery.isPending && accountOptions.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountPool", { count: accountOptions.length })}</p> : null}
                     {form.formState.errors.accountIds ? <p className="mt-2 text-xs text-destructive" role="alert">{form.formState.errors.accountIds.message}</p> : null}
                   </div>
                 ) : null}

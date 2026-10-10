@@ -21,6 +21,7 @@ import (
 
 const defaultModelSyncWorkers = 25
 const syncFailurePersistTimeout = 5 * time.Second
+const boundAccountIDChunk = 500
 
 var maxModelBatchSize = repository.MaxPageSize * len(modeldomain.Capabilities())
 
@@ -329,10 +330,7 @@ func (s *Service) ListBindableAccounts(ctx context.Context, providerValue accoun
 	if !providerValue.IsValid() {
 		return nil, invalidInput("账号来源无效")
 	}
-	values, _, err := s.accounts.List(ctx, repository.AccountListQuery{
-		Page:   repository.PageQuery{Offset: 0, Limit: 1000},
-		Filter: repository.AccountListFilter{Provider: string(providerValue)},
-	})
+	values, err := s.accounts.ListProviderAccountNames(ctx, providerValue)
 	if err != nil {
 		return nil, err
 	}
@@ -358,9 +356,6 @@ func (s *Service) validateProviderCapability(providerValue account.Provider, cap
 }
 
 func (s *Service) validateBoundAccounts(ctx context.Context, providerValue account.Provider, ids []uint64) ([]uint64, error) {
-	if len(ids) > 1000 {
-		return nil, invalidInput("单个模型最多绑定 1000 个账号")
-	}
 	unique := make(map[uint64]struct{}, len(ids))
 	result := make([]uint64, 0, len(ids))
 	for _, id := range ids {
@@ -376,21 +371,17 @@ func (s *Service) validateBoundAccounts(ctx context.Context, providerValue accou
 	if len(result) == 0 {
 		return result, nil
 	}
-	values, _, err := s.accounts.List(ctx, repository.AccountListQuery{
-		Page:   repository.PageQuery{Offset: 0, Limit: 1000},
-		Filter: repository.AccountListFilter{Provider: string(providerValue)},
-	})
-	if err != nil {
-		return nil, err
-	}
-	available := make(map[uint64]bool, len(values))
-	for _, value := range values {
-		available[value.ID] = true
-	}
-	for _, id := range result {
-		if !available[id] {
-			return nil, invalidInput(fmt.Sprintf("账号 %d 不存在或与模型来源不匹配", id))
+	for start := 0; start < len(result); start += boundAccountIDChunk {
+		end := min(start+boundAccountIDChunk, len(result))
+		chunk := result[start:end]
+		count, err := s.accounts.CountProviderAccountsByIDs(ctx, providerValue, chunk)
+		if err != nil {
+			return nil, err
 		}
+		if int(count) == len(chunk) {
+			continue
+		}
+		return nil, invalidInput("有账号不存在或与模型来源不匹配")
 	}
 	return result, nil
 }

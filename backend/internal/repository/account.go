@@ -20,6 +20,12 @@ type AccountUpsertResult struct {
 	Created bool
 }
 
+// NamedAccount is the id-and-name projection used by admin account pickers.
+type NamedAccount struct {
+	ID   uint64
+	Name string
+}
+
 // BuildBotFlagCredential is the minimal encrypted credential projection used to
 // rebuild persisted Build bot-risk metadata outside the request path.
 type BuildBotFlagCredential struct {
@@ -102,6 +108,7 @@ type AccountRepository interface {
 	// previously rejected refresh token once.
 	ListEnabledCredentialRefreshAccountIDs(ctx context.Context, provider account.Provider, refreshableOnly bool) ([]uint64, error)
 	CountProviderAccountsByIDs(ctx context.Context, provider account.Provider, ids []uint64) (int64, error)
+	ListProviderAccountNames(ctx context.Context, provider account.Provider) ([]NamedAccount, error)
 	// CountAvailableAmong counts how many of the given account IDs currently match the
 	// same "available/schedulable" predicate used by Summarize for the provider.
 	CountAvailableAmong(ctx context.Context, provider account.Provider, ids []uint64, now time.Time) (int64, error)

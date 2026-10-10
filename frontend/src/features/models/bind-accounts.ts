@@ -1,10 +1,7 @@
-export const MAX_BOUND_ACCOUNTS = 1000;
-
 export function mergeVisibleBoundAccountSelection(
   currentIds: readonly string[],
   visibleIds: readonly string[],
   selectVisible: boolean,
-  max = MAX_BOUND_ACCOUNTS,
 ): string[] {
   if (!selectVisible) {
     const visible = new Set(visibleIds);
@@ -15,9 +12,6 @@ export function mergeVisibleBoundAccountSelection(
   for (const id of visibleIds) {
     if (selected.has(id)) {
       continue;
-    }
-    if (next.length >= max) {
-      break;
     }
     selected.add(id);
     next.push(id);

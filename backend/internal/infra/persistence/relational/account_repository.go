@@ -183,6 +183,23 @@ func (r *AccountRepository) ListProviderAccountBatch(ctx context.Context, provid
 	return out, total, nil
 }
 
+// ListProviderAccountNames reads only id and name so the model bind picker can list every account.
+func (r *AccountRepository) ListProviderAccountNames(ctx context.Context, providerValue account.Provider) ([]repository.NamedAccount, error) {
+	var rows []repository.NamedAccount
+	err := r.db.db.WithContext(ctx).Model(&accountModel{}).
+		Select("id", "name").
+		Where("provider = ?", providerValue).
+		Order("created_at DESC, id DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	if rows == nil {
+		return []repository.NamedAccount{}, nil
+	}
+	return rows, nil
+}
+
 // CountProviderAccountsByIDs 只校验账号主表归属，不加载额度、关联或审计数据。
 func (r *AccountRepository) CountProviderAccountsByIDs(ctx context.Context, providerValue account.Provider, ids []uint64) (int64, error) {
 	if len(ids) == 0 {

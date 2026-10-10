@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -530,4 +531,81 @@ func (a *modelCapabilityAdapter) ParseImportedCredentials([]byte) ([]provider.Cr
 }
 func (a *modelCapabilityAdapter) MarshalCredentials([]provider.CredentialSeed) ([]byte, error) {
 	return nil, nil
+}
+
+func TestBindingCoversAccountsBeyondTheOldThousandCap(t *testing.T) {
+	ctx := context.Background()
+	database, err := relational.OpenSQLite(ctx, filepath.Join(t.TempDir(), "bind-all-accounts.db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer database.Close()
+	if err := database.InitializeSchema(ctx); err != nil {
+		t.Fatal(err)
+	}
+	cipher, err := security.NewCipher(base64.StdEncoding.EncodeToString(make([]byte, 32)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	encrypted, err := cipher.Encrypt("access-token")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const pool = 1001
+	expires := time.Now().Add(time.Hour)
+	credentials := make([]account.Credential, 0, pool+1)
+	for index := 0; index < pool; index++ {
+		key := fmt.Sprintf("build-%04d", index)
+		credentials = append(credentials, account.Credential{
+			Provider: account.ProviderBuild, AuthType: account.AuthTypeOAuth, Name: key, SourceKey: key,
+			EncryptedAccessToken: encrypted, ExpiresAt: expires, AuthStatus: account.AuthStatusActive, Enabled: true,
+		})
+	}
+	credentials = append(credentials, account.Credential{
+		Provider: account.ProviderWeb, AuthType: account.AuthTypeSSO, Name: "web-only", SourceKey: "web-only",
+		EncryptedAccessToken: encrypted, ExpiresAt: expires, AuthStatus: account.AuthStatusActive, Enabled: true,
+	})
+	accountRepo := relational.NewAccountRepository(database)
+	stored, err := accountRepo.UpsertManyByIdentity(ctx, credentials)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(stored) != pool+1 || stored[pool].ID == 0 {
+		t.Fatalf("stored accounts = %d", len(stored))
+	}
+	modelRepo := relational.NewModelRepository(database)
+	registry := provider.NewRegistry(&modelRouteAdapter{modelCapabilityAdapter: &modelCapabilityAdapter{}})
+	service := NewService(modelRepo, accountRepo, nil, registry)
+
+	options, err := service.ListBindableAccounts(ctx, account.ProviderBuild)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(options) != pool {
+		t.Fatalf("bindable accounts = %d, want %d", len(options), pool)
+	}
+	ids := make([]uint64, 0, len(options))
+	for _, option := range options {
+		if option.Name == "web-only" {
+			t.Fatal("web account was listed for the build provider")
+		}
+		ids = append(ids, option.ID)
+	}
+	created, err := service.Create(ctx, CreateInput{
+		PublicID: "grok-4.6", Provider: account.ProviderBuild, UpstreamModel: "grok-4.6",
+		Capability: modeldomain.CapabilityResponses, Enabled: true, AccountIDs: ids,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(created.BoundAccountIDs) != pool {
+		t.Fatalf("bound accounts = %d, want %d", len(created.BoundAccountIDs), pool)
+	}
+	_, err = service.Create(ctx, CreateInput{
+		PublicID: "grok-4.7", Provider: account.ProviderBuild, UpstreamModel: "grok-4.7",
+		Capability: modeldomain.CapabilityResponses, Enabled: true, AccountIDs: []uint64{stored[pool].ID},
+	})
+	if err == nil || !strings.Contains(err.Error(), "有账号不存在或与模型来源不匹配") {
+		t.Fatalf("foreign account error = %v", err)
+	}
 }

@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  MAX_BOUND_ACCOUNTS,
   mergeVisibleBoundAccountSelection,
   visibleBoundAccountsFullySelected,
 } from "./bind-accounts.ts";
@@ -26,22 +25,11 @@ test("reports fully selected only when every visible id is already chosen", () =
   assert.equal(visibleBoundAccountsFullySelected(["hidden"], ["a"]), false);
 });
 
-test("keeps existing ids then fills up to the bind cap", () => {
-  const current = Array.from({ length: 998 }, (_, index) => `keep-${index}`);
-  const visible = ["keep-0", "new-a", "new-b", "new-c", "new-d"];
-  const next = mergeVisibleBoundAccountSelection(current, visible, true);
-  assert.equal(next.length, MAX_BOUND_ACCOUNTS);
-  assert.deepEqual(next.slice(0, 998), current);
-  assert.deepEqual(next.slice(998), ["new-a", "new-b"]);
-});
-
-test("does not drop existing ids when the bind cap is already full", () => {
-  const current = Array.from({ length: MAX_BOUND_ACCOUNTS }, (_, index) => `keep-${index}`);
-  const next = mergeVisibleBoundAccountSelection(current, ["extra"], true);
-  assert.equal(next.length, MAX_BOUND_ACCOUNTS);
-  assert.equal(next.includes("extra"), false);
-  assert.deepEqual(next, current);
-  assert.notEqual(next, current);
+test("selects every visible account past the old 1000 row cap", () => {
+  const visible = Array.from({ length: 1500 }, (_, index) => `id-${index}`);
+  const next = mergeVisibleBoundAccountSelection([], visible, true);
+  assert.equal(next.length, 1500);
+  assert.equal(next[1499], "id-1499");
 });
 
 test("does not mutate the current ids array", () => {
