@@ -36,6 +36,7 @@ import { formatDateTime } from "@/shared/lib/format";
 import { nextTableSort, type SortOrder, type TableSort } from "@/shared/lib/table-sort";
 
 const modelSyncToastID = "model-sync-progress";
+const accountPageSizes = [20, 50, 100] as const;
 
 export function ModelsPage() {
   const { t, i18n } = useTranslation();
@@ -51,6 +52,8 @@ export function ModelsPage() {
   const [deleting, setDeleting] = useState<ModelRouteGroup | null>(null);
   const [batchDeleteOpen, setBatchDeleteOpen] = useState(false);
   const [accountSearch, setAccountSearch] = useState("");
+  const [accountPage, setAccountPage] = useState(1);
+  const [accountPageSize, setAccountPageSize] = useState<number>(20);
   const debouncedSearch = useDebouncedValue(search);
   const schema = z.object({
     publicId: z.string().min(1, t("errors.required")),
@@ -162,6 +165,7 @@ export function ModelsPage() {
   function beginEdit(model: ModelRouteDTO): void {
     setEditing(model);
     setAccountSearch("");
+    setAccountPage(1);
     form.reset({
       publicId: model.publicId,
       provider: model.provider,
@@ -176,6 +180,7 @@ export function ModelsPage() {
   function beginCreate(): void {
     setEditing("new");
     setAccountSearch("");
+    setAccountPage(1);
     form.reset({ publicId: "", provider: "grok_build", upstreamModel: "", capability: "responses", enabled: true, bindingMode: false, accountIds: [] });
   }
 
@@ -198,14 +203,16 @@ export function ModelsPage() {
     : accountOptions;
   const visibleAccountIDs = visibleAccountOptions.map((account) => account.id);
   const selectedAccountIDSet = new Set(selectedAccountIDs);
-  const visibleAccountsFullySelected = visibleBoundAccountsFullySelected(selectedAccountIDs, visibleAccountIDs);
-  const selectAllWouldAdd = visibleAccountIDs.some((id) => !selectedAccountIDSet.has(id));
 
-  function toggleVisibleBoundAccounts(): void {
-    const current = form.getValues("accountIds");
-    const selectVisible = !visibleBoundAccountsFullySelected(current, visibleAccountIDs);
-    const next = mergeVisibleBoundAccountSelection(current, visibleAccountIDs, selectVisible);
-    form.setValue("accountIds", next, { shouldValidate: true });
+  const pageAccountCount = Math.max(1, Math.ceil(visibleAccountOptions.length / accountPageSize));
+  const currentAccountPage = Math.min(accountPage, pageAccountCount);
+  const pageAccountOptions = visibleAccountOptions.slice((currentAccountPage - 1) * accountPageSize, currentAccountPage * accountPageSize);
+  const pageAccountIDs = pageAccountOptions.map((account) => account.id);
+  const pageAccountsFullySelected = visibleBoundAccountsFullySelected(selectedAccountIDs, pageAccountIDs);
+  const everyAccountFullySelected = visibleBoundAccountsFullySelected(selectedAccountIDs, visibleAccountIDs);
+
+  function setBoundAccounts(ids: readonly string[], selectIds: boolean): void {
+    form.setValue("accountIds", mergeVisibleBoundAccountSelection(form.getValues("accountIds"), ids, selectIds), { shouldValidate: true, shouldDirty: true });
   }
 
   const result = useMemo(() => modelsQuery.data ? { ...modelsQuery.data, items: modelsQuery.data.items.map((group) => newModelRouteGroup(group, t)) } : undefined, [modelsQuery.data, t]);
@@ -398,23 +405,24 @@ export function ModelsPage() {
                 </div>
                 {bindingMode ? (
                   <div className="mt-3">
-                    <div className="overflow-hidden rounded-md bg-background/55 p-1">
-                      <div className="flex items-center gap-1">
+                    <div className="rounded-md bg-background/55 p-1">
+                      <div className="flex flex-wrap items-center gap-1">
                         <div className="relative min-w-0 flex-1">
                           <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-                          <Input className="bg-transparent pl-8 shadow-none focus-visible:bg-background/70" value={accountSearch} onChange={(event) => setAccountSearch(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder={t("models.searchAccounts")} aria-label={t("models.searchAccounts")} />
+                          <Input className="bg-transparent pl-8 shadow-none focus-visible:bg-background/70" value={accountSearch} onChange={(event) => { setAccountSearch(event.target.value); setAccountPage(1); }} onKeyDown={(event) => { if (event.key === "Enter") event.preventDefault(); }} placeholder={t("models.searchAccounts")} aria-label={t("models.searchAccounts")} />
                         </div>
-                        {visibleAccountOptions.length > 0 ? (
-                          <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" aria-pressed={visibleAccountsFullySelected} aria-controls="model-bound-account-list" disabled={!visibleAccountsFullySelected && !selectAllWouldAdd} onClick={toggleVisibleBoundAccounts}>
-                            {visibleAccountsFullySelected ? t("models.clearVisibleAccounts") : t("models.selectAllVisibleAccounts")}
-                          </Button>
-                        ) : null}
+                        <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={pageAccountIDs.length === 0} aria-pressed={pageAccountsFullySelected} onClick={() => setBoundAccounts(pageAccountIDs, !pageAccountsFullySelected)}>
+                          {pageAccountsFullySelected ? t("models.clearVisibleAccounts") : t("models.selectAllVisibleAccounts")}
+                        </Button>
+                        <Button type="button" variant="ghost" size="sm" className="h-7 shrink-0 px-2 text-xs" disabled={visibleAccountIDs.length === 0} aria-pressed={everyAccountFullySelected} onClick={() => setBoundAccounts(visibleAccountIDs, !everyAccountFullySelected)}>
+                          {everyAccountFullySelected ? t("models.clearEveryAccount") : t("models.selectEveryAccount")}
+                        </Button>
                       </div>
                       <div id="model-bound-account-list" role="group" aria-label={t("models.boundAccounts")} className="mt-1 max-h-72 overflow-y-auto overscroll-contain">
                         {accountOptionsQuery.isPending ? <div className="flex min-h-20 items-center justify-center"><Spinner /></div> : null}
                         {accountOptionsQuery.isError ? <p className="p-3 text-center text-xs text-destructive">{accountOptionsQuery.error.message}</p> : null}
                         {!accountOptionsQuery.isPending && visibleAccountOptions.length === 0 ? <p className="p-3 text-center text-xs text-muted-foreground">{t("models.noBindableAccounts")}</p> : null}
-                        {visibleAccountOptions.map((account) => {
+                        {pageAccountOptions.map((account) => {
                           const controlId = `model-account-${account.id}`;
                           const checked = selectedAccountIDSet.has(account.id);
                           return (
@@ -427,7 +435,8 @@ export function ModelsPage() {
                         })}
                       </div>
                     </div>
-                    {!accountOptionsQuery.isPending && accountOptions.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountPool", { count: accountOptions.length })}</p> : null}
+                    {!accountOptionsQuery.isPending && accountOptions.length > 0 ? <p className="mt-2 text-xs text-muted-foreground">{t("models.bindAccountPool", { selected: selectedAccountIDs.length, total: accountOptions.length })}</p> : null}
+                    {accountOptions.length > 0 ? <Pagination className="mt-2" page={currentAccountPage} pageSize={accountPageSize} total={visibleAccountOptions.length} pageSizeOptions={accountPageSizes} onPageChange={setAccountPage} onPageSizeChange={(value) => { setAccountPageSize(value); setAccountPage(1); }} /> : null}
                     {form.formState.errors.accountIds ? <p className="mt-2 text-xs text-destructive" role="alert">{form.formState.errors.accountIds.message}</p> : null}
                   </div>
                 ) : null}
