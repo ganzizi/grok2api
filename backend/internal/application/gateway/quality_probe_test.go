@@ -94,8 +94,15 @@ func TestOmitQualityProbeCoolingAuditOnlyForProbeCooling(t *testing.T) {
 		t.Fatal("ordinary cooling must still be audited")
 	}
 	quota := &SelectionUnavailableError{Reason: SelectionQuotaExhausted}
-	if omitQualityProbeCoolingAudit(probe, quota) {
-		t.Fatal("quality probe quota exhaustion must still be audited")
+	if !omitQualityProbeCoolingAudit(probe, quota) {
+		t.Fatal("quality probe quota exhaustion must not be audited")
+	}
+	if omitQualityProbeCoolingAudit(context.Background(), quota) {
+		t.Fatal("ordinary quota exhaustion must still be audited")
+	}
+	saturated := &SelectionUnavailableError{Reason: SelectionSaturated}
+	if omitQualityProbeCoolingAudit(probe, saturated) {
+		t.Fatal("other probe refusals must still be audited")
 	}
 }
 

@@ -1769,8 +1769,9 @@ attemptLoop:
 }
 
 // omitQualityProbeCoolingAudit drops the request audit when a quality probe
-// is refused locally because the pinned account is still cooling. The probe
-// still fails, and ordinary client 429s continue to be recorded.
+// is refused locally because the pinned account is still cooling or waiting
+// for quota recovery. The probe still fails, and ordinary client 429s
+// continue to be recorded.
 func omitQualityProbeCoolingAudit(ctx context.Context, err error) bool {
 	if !infraegress.QualityProbeFromContext(ctx) {
 		return false
@@ -1779,7 +1780,7 @@ func omitQualityProbeCoolingAudit(ctx context.Context, err error) bool {
 	if !errors.As(err, &unavailable) || unavailable == nil {
 		return false
 	}
-	return unavailable.Reason == SelectionCooling
+	return unavailable.Reason == SelectionCooling || unavailable.Reason == SelectionQuotaExhausted
 }
 
 func isUpstreamStreamFailure(errorCode string) bool {
