@@ -1121,6 +1121,11 @@ func (s *Service) createResponseAt(ctx context.Context, input Input, path string
 				}
 				record.CreatedAt = now
 				applyAuditEgress(&record, egressTrace, route.Provider)
+				if err := budget.run("quality_disable", finalizationHealthBudget, func(stageCtx context.Context) error {
+					return s.applyOutputSpeedPenalty(stageCtx, record, credential, holdCfg, input.ForcedEgressNodeID != 0)
+				}); err != nil {
+					s.logger.Error("quality_degraded_penalty_failed", "request_id", input.RequestID, "account_id", credential.ID, "error", err)
+				}
 				if supportsStoredResponses && operation == audit.OperationResponses && responseID != "" && successful {
 					err := budget.run("response_ownership", finalizationOwnershipBudget, func(stageCtx context.Context) error {
 						return s.responses.Save(stageCtx, inferencedomain.ResponseOwnership{ResponseID: responseID, AccountID: accountID, ClientKeyID: input.ClientKey.ID, ModelRouteID: route.ID, Provider: route.Provider, PromptCacheKey: ownershipPromptCacheKey, ReasoningReplayKey: reasoningReplayKey, ExpiresAt: now.Add(responseOwnershipTTL), CreatedAt: now, UpdatedAt: now})
@@ -1625,17 +1630,19 @@ attemptLoop:
 				commit := CommitQualityHold(verdict, qualityAccountAttempts-1, holdCfg.MaxAttempts, hasNextAccount, holdCfg.OnExhausted)
 				if verdict == QualityWithhold {
 					cooldown := holdCfg.AccountCooldown
+					autoDisable := holdCfg.AutoDisable
 					// Usage not reported yet (logged as output_tokens=0) is the
 					// empty/short-hold path, not a confirmed 128k missing-thinking
 					// dump. Use idle cooldown so one TUI turn does not 1.5h-burn
-					// five accounts.
+					// five accounts, and do not auto-disable on that path.
 					if peekUsage.OutputTokens == 0 && peekUsage.ReasoningTokens == 0 {
 						cooldown = holdCfg.IdleAccountCooldown
 						if cooldown <= 0 {
 							cooldown = qualityIdleAccountCooldown
 						}
+						autoDisable = false
 					}
-					s.applyMissingThinkingPenalty(ctx, input.RequestID, credential, cooldown)
+					s.applyMissingThinkingPenalty(ctx, input.RequestID, credential, cooldown, autoDisable)
 				}
 				deferFailOpenAudit := commit.Action == QualityActionRetry && holdCfg.OnExhausted == qualityRetryFailOpen
 				if commit.Audit && !deferFailOpenAudit {

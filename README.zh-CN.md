@@ -377,11 +377,13 @@ qualityGuard:
     holdTimeout: 30s
     minOutputTokens: 8
     onExhausted: fail_closed # fail_open | fail_closed
+    # 首次确认缺 thinking 或吞吐降智（soft/hard/burst）时立即禁用账号。
+    autoDisable: true
     accountCooldown: 12h
     idleAccountCooldown: 15m
 ```
 
-`requestRetry` 在网关请求路径上生效，与 sidecar 探测/隔离相互独立，默认只对 Build 启用。Web 和 Console 不进入这条 Build 专用质量策略，因此正常流式请求不受影响。Build 思考模型在可见输出达到 `minOutputTokens` 且全程无流式 reasoning 时**不发给用户**；只有可安全重放的无状态请求才会排除账号重试。TUI 续聊（`previous_response_id`）和 hosted tools 仍会进入 hold 检测，但质量拦截不会把账号绑定状态或有副作用的工具跨账号重放，最终按 `onExhausted` 返回 `503 quality_degraded` 或放出当前响应。上下文压缩、图片、视频和 ForcedEgress 探针不受影响。
+`requestRetry` 在网关请求路径上生效，与 sidecar 探测/隔离相互独立，默认只对 Build 启用。Web 和 Console 不进入这条 Build 专用质量策略，因此正常流式请求不受影响。Build 思考模型在可见输出达到 `minOutputTokens` 且全程无流式 reasoning 时**不发给用户**；只有可安全重放的无状态请求才会排除账号重试。TUI 续聊（`previous_response_id`）和 hosted tools 仍会进入 hold 检测，但质量拦截不会把账号绑定状态或有副作用的工具跨账号重放，最终按 `onExhausted` 返回 `503 quality_degraded` 或放出当前响应。`autoDisable: true` 会在首次确认缺 thinking 或吞吐降智（soft/hard/burst）时直接禁用账号；空响应或短 hold 仍走 idle cooldown，不会自动停用。管理页面的“自动停用降智账号”控制 `autoDisable`，关闭后恢复 YAML 中 `requestRetry.enabled` 的原有策略。上下文压缩、图片、视频和 ForcedEgress 探针不受影响。
 
 ```bash
 docker compose up -d --build
