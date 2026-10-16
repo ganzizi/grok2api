@@ -202,6 +202,60 @@ func TestNormalizeBuildMaxAcrossCompatibilityProtocols(t *testing.T) {
 	}
 }
 
+func TestNormalizeBuildStripsUnsupportedNoneEffort(t *testing.T) {
+	dropped, err := normalizeBuildRequest([]byte(`{"reasoning":{"effort":"none"},"input":"hello"}`), "grok-4.6", conversation.OperationResponses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(dropped, &payload); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := payload["reasoning"]; ok {
+		t.Fatalf("unsupported none should be removed, got %#v", payload["reasoning"])
+	}
+
+	kept, err := normalizeBuildRequest([]byte(`{"reasoning":{"effort":"NONE","summary":"concise"},"input":"hello"}`), "grok-4.6", conversation.OperationResponses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(kept, &payload); err != nil {
+		t.Fatal(err)
+	}
+	reasoning, _ := payload["reasoning"].(map[string]any)
+	if reasoning == nil || reasoning["summary"] != "concise" || reasoning["effort"] != nil {
+		t.Fatalf("summary should stay without effort, got %#v", payload["reasoning"])
+	}
+
+	chat, _, err := conversation.ConvertRequestWithOptions(
+		[]byte(`{"model":"public","messages":[{"role":"user","content":"hello"}],"reasoning_effort":"none"}`),
+		"grok-4.6",
+		conversation.OperationChat,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	normalized, err := normalizeBuildRequest(chat, "grok-4.6", conversation.OperationChat)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(normalized), `"none"`) {
+		t.Fatalf("chat none leaked: %s", normalized)
+	}
+
+	supported, err := normalizeBuildRequest([]byte(`{"reasoning":{"effort":"none"},"input":"hello"}`), "grok-4.3", conversation.OperationResponses)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := json.Unmarshal(supported, &payload); err != nil {
+		t.Fatal(err)
+	}
+	reasoning, _ = payload["reasoning"].(map[string]any)
+	if reasoning == nil || reasoning["effort"] != "none" {
+		t.Fatalf("supported none was rewritten: %#v", payload["reasoning"])
+	}
+}
+
 func TestNormalizeBuildComposerStripsReasoningEffort(t *testing.T) {
 	tests := []struct {
 		name      string

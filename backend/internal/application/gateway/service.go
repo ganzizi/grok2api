@@ -1758,12 +1758,28 @@ attemptLoop:
 	record.Attempts = failureAttempts.snapshot()
 	record.CreatedAt = time.Now().UTC()
 	applyAuditEgress(&record, egressTrace, route.Provider)
-	persistCtx, cancel := context.WithTimeout(context.Background(), finalizationTimeout)
-	defer cancel()
-	if err := s.audits.Create(persistCtx, record); err != nil {
-		s.logger.Error("request_usage_write_failed", "event_id", record.EventID, "request_id", input.RequestID, "error", err)
+	if !omitQualityProbeCoolingAudit(ctx, lastErr) {
+		persistCtx, cancel := context.WithTimeout(context.Background(), finalizationTimeout)
+		defer cancel()
+		if err := s.audits.Create(persistCtx, record); err != nil {
+			s.logger.Error("request_usage_write_failed", "event_id", record.EventID, "request_id", input.RequestID, "error", err)
+		}
 	}
 	return nil, fmt.Errorf("%w: %w", ErrNoAvailableAccount, lastErr)
+}
+
+// omitQualityProbeCoolingAudit drops the request audit when a quality probe
+// is refused locally because the pinned account is still cooling. The probe
+// still fails, and ordinary client 429s continue to be recorded.
+func omitQualityProbeCoolingAudit(ctx context.Context, err error) bool {
+	if !infraegress.QualityProbeFromContext(ctx) {
+		return false
+	}
+	var unavailable *SelectionUnavailableError
+	if !errors.As(err, &unavailable) || unavailable == nil {
+		return false
+	}
+	return unavailable.Reason == SelectionCooling
 }
 
 func isUpstreamStreamFailure(errorCode string) bool {

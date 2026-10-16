@@ -237,6 +237,16 @@ func normalizeBuildReasoningEffortPayload(payload map[string]json.RawMessage, mo
 		return false
 	}
 	requested := strings.ToLower(strings.TrimSpace(effort))
+	// 模型不提供 none 时，原样转发会被上游拒绝。删掉 effort，相当于不指定档位。
+	if requested == modeldomain.ReasoningEffortNone && !modeldomain.SupportsReasoningEffort(model, modeldomain.ReasoningEffortNone) {
+		delete(reasoning, "effort")
+		if len(reasoning) == 0 {
+			delete(payload, "reasoning")
+		} else {
+			payload["reasoning"] = mustJSON(reasoning)
+		}
+		return true
+	}
 	var normalized string
 	switch requested {
 	case modeldomain.ReasoningEffortMinimal:
