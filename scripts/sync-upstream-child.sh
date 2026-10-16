@@ -318,7 +318,11 @@ main() {
 
     local candidate
     candidate=$(git rev-parse HEAD)
-    mapfile -t child_commits < <(
+    child_commits=()
+    while IFS= read -r commit; do
+        [[ -n "$commit" ]] || continue
+        child_commits+=("$commit")
+    done < <(
         git log --reverse --cherry-pick --right-only --no-merges --format='%H' \
             "$candidate...refs/remotes/child/$CHILD_REF"
     )
