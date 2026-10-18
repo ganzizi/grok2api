@@ -26,6 +26,7 @@ declare -a EXCLUDED=()
 declare -a PENDING=()
 declare -a UPSTREAM_EQUIVALENT=()
 BLOCKED=false
+VERSION_SYNC_RESULT=""
 
 # Log helper
 log() {
@@ -202,6 +203,12 @@ write_report() {
         else
             printf '%s\n' "${APPLIED[@]}"
         fi
+        printf '\n## Version compatibility\n\n'
+        if [[ -n "$VERSION_SYNC_RESULT" ]]; then
+            printf -- '- %s\n' "$VERSION_SYNC_RESULT"
+        else
+            printf -- '- Version compatibility sync was not reached.\n'
+        fi
         printf '\n## Excluded\n\n'
         if ((${#EXCLUDED[@]} == 0)); then
             printf -- '- No new commits were excluded in this run.\n'
@@ -310,6 +317,10 @@ main() {
         fi
     fi
     state_set_upstream_baseline "$(git rev-parse "refs/remotes/upstream/$UPSTREAM_REF")"
+    VERSION_SYNC_RESULT=$(GROK2API_VERSION_VERIFY_REF="refs/remotes/upstream/$UPSTREAM_REF" \
+        GROK2API_VERSION_TAG_REMOTE=upstream \
+        bash scripts/version-compat.sh --sync)
+    log "$GREEN" "$VERSION_SYNC_RESULT"
     local after_official
     after_official=$(git rev-parse HEAD)
     if [[ "$before_official" != "$after_official" ]] || ! git diff --quiet -- "$STATE_FILE"; then

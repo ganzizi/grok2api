@@ -162,3 +162,5 @@ child     https://github.com/lij768423-svg/grok2api.git
 ```
 
 未点名不要 push `child`。线上源码目录 `/opt/ganzizi-grok2api-15353/source`，`auto-update.sh` 每小时整点快进 `origin/main` 并重建 `grok2api` 镜像。本机 stash `wip: sse stream keepalive before sync to live 3d0c444` 不要随便 pop。
+
+版本兼容由 `scripts/version-compat.sh` 负责：上游同步时从官方最新稳定 Release 校准 `VERSION`，并验证 Release tag 位于上游 `main` 历史；线上 `auto-update.sh` 在跳过或构建前执行 `--check`，发现版本低于最新稳定 Release 时直接失败，禁止带旧版本继续部署。
