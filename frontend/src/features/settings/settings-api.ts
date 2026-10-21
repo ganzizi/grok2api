@@ -31,6 +31,7 @@ export type SettingsConfigDTO = {
     markBuildForbiddenReauth: boolean;
     buildForbiddenReauthCodes: string[];
     excludeBuildBotFlaggedFromScheduling: boolean;
+    autoDeleteConsoleUnlinked: boolean;
     autoCleanReauthEnabled: boolean;
     autoCleanReauthInterval: string;
     autoCleanReauthMinAge: string;
@@ -159,6 +160,7 @@ const settingsConfigValidator = hasShape({
     markBuildForbiddenReauth: isOptional(isBoolean),
     buildForbiddenReauthCodes: isOptional(isArrayOf(isString)),
     excludeBuildBotFlaggedFromScheduling: isOptional(isBoolean),
+    autoDeleteConsoleUnlinked: isOptional(isBoolean),
     autoCleanReauthEnabled: isBoolean,
     autoCleanReauthInterval: isString,
     autoCleanReauthMinAge: isString,
@@ -170,6 +172,7 @@ const defaultAccountsConfig = (): SettingsConfigDTO["accounts"] => ({
   markBuildForbiddenReauth: false,
   buildForbiddenReauthCodes: ["permission-denied"],
   excludeBuildBotFlaggedFromScheduling: false,
+  autoDeleteConsoleUnlinked: false,
   autoCleanReauthEnabled: false,
   autoCleanReauthInterval: "10m",
   autoCleanReauthMinAge: "1h",
@@ -210,6 +213,7 @@ function withSettingsDefaults(snapshot: SettingsSnapshotDTO): SettingsSnapshotDT
         markBuildForbiddenReauth: accounts.markBuildForbiddenReauth ?? false,
         buildForbiddenReauthCodes: accounts.buildForbiddenReauthCodes ?? ["permission-denied"],
         excludeBuildBotFlaggedFromScheduling: accounts.excludeBuildBotFlaggedFromScheduling ?? false,
+        autoDeleteConsoleUnlinked: accounts.autoDeleteConsoleUnlinked ?? false,
         autoCleanReauthEnabled: accounts.autoCleanReauthEnabled ?? false,
         autoCleanReauthInterval: accounts.autoCleanReauthInterval || "10m",
         autoCleanReauthMinAge: accounts.autoCleanReauthMinAge || "1h",
