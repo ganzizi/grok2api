@@ -161,6 +161,6 @@ upstream  https://github.com/chenyme/grok2api.git
 child     https://github.com/lij768423-svg/grok2api.git
 ```
 
-未点名不要 push `child`。线上源码目录 `/opt/ganzizi-grok2api-15353/source`，`auto-update.sh` 每小时整点快进 `origin/main` 并重建 `grok2api` 镜像。本机 stash `wip: sse stream keepalive before sync to live 3d0c444` 不要随便 pop。
+未点名不要 push `child`。线上源码目录 `/opt/ganzizi-grok2api-15353/source`，`auto-update.sh` 每小时整点只快进 `origin/main` 并拉取 GHCR 镜像。严禁在 49 服务器上 `docker compose build` 或任何本地镜像构建；2 核 2G 会被编译打满并重启。镜像只能由 GitHub Actions 的 `ghcr-image.yml` 构建并推到 `ghcr.io/ganzizi/grok2api`，服务器只 `docker pull` 后 `--no-build` 切换。本机 stash `wip: sse stream keepalive before sync to live 3d0c444` 不要随便 pop。
 
-版本兼容由 `scripts/version-compat.sh` 负责：上游同步时从官方最新稳定 Release 校准 `VERSION`，并验证 Release tag 位于上游 `main` 历史；线上 `auto-update.sh` 在跳过或构建前执行 `--check`，发现版本低于最新稳定 Release 时直接失败，禁止带旧版本继续部署。
+版本兼容由 `scripts/version-compat.sh` 负责：上游同步时从官方最新稳定 Release 校准 `VERSION`，并验证 Release tag 位于上游 `main` 历史；线上 `auto-update.sh` 在拉取前执行 `--check`，发现版本低于最新稳定 Release 时直接失败，禁止带旧版本继续部署，也禁止因此改到服务器上构建。
