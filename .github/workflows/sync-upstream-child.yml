@@ -1,8 +1,9 @@
 name: Sync upstream and child branches
 
+# 上海时间每天 03:10 同步一次。服务器 05:40 只 docker pull，再 up --no-build。
 on:
   schedule:
-    - cron: "17 */6 * * *"
+    - cron: "10 19 * * *"
   workflow_dispatch:
 
 concurrency:
